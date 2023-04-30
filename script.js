@@ -73,25 +73,3 @@ function drawBricksCanvas() {
         }
     }
 }
-
-function updateSearch(searchStr) {
-    searchStr = searchStr.trim().toLowerCase();
-    BRICKS.forEach((row, i) => {
-        row.forEach((brick, j) => {
-            let td = document.getElementById(`brick-${i}-${j}`);
-            if (
-                searchStr &&
-                (`${brick.fname} ${brick.lname}`
-                    .toLowerCase()
-                    .startsWith(searchStr) ||
-                    brick.lname.toLowerCase().startsWith(searchStr))
-            ) {
-                td.style.borderColor = "yellow";
-                td.style.scale = 1.5;
-            } else {
-                td.style.borderColor = "initial";
-                td.style.scale = "initial";
-            }
-        });
-    });
-}
