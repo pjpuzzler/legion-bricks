@@ -48,9 +48,9 @@ function drawBricksCanvas() {
                     Math.pow(510, 2) &&
                     y <= canvas.height - brickHeight * 21) ||
                 ((x < brickHeight * 39 ||
-                    x > canvas.width - brickHeight * 39) &&
+                    x > canvas.width - brickHeight * 41) &&
                     y > canvas.height - brickHeight * 21 &&
-                    y < canvas.height - brickHeight * 15)
+                    y < canvas.height - brickHeight * 14)
             )
                 color = wallColor;
             else color = brickColor;
