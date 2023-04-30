@@ -44,8 +44,8 @@ function drawBricksCanvas() {
 
             if (
                 (Math.pow(x - canvas.width / 2, 2) +
-                    Math.pow(y - canvas.height / 2 - brickHeight * 23, 2) >
-                    Math.pow(510, 2) &&
+                    Math.pow(y - canvas.height / 2 - brickHeight * 24, 2) >
+                    Math.pow(260, 2) &&
                     y <= canvas.height - brickHeight * 21) ||
                 ((x < brickHeight * 39 ||
                     x > canvas.width - brickHeight * 41) &&
