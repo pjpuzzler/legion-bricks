@@ -10,7 +10,7 @@ class Brick {
 const m = 72,
     n = 160;
 
-const TEST = "";
+const TEST = "35-36";
 
 // prettier-ignore
 const BRICKS = {
@@ -269,7 +269,7 @@ const BRICKS = {
     "30-39": new Brick("STEPHEN L", "FOUST", "U S ARMY", "VIETNAM ERA"),
     "33-35": new Brick("GLENN", "BRESSLER", "U S ARMY", "WORLD WAR II"),
     "34-35": new Brick("DENNIS", "BRESSLER", "U S ARMY", "VIETNAM WAR"),
-    "35-36": new Brick("JAMES V", "SWALES", "U S ARMY", "WORLD WARD II"),
+    "35-36": new Brick("JAMES V", "SWALES", "U S ARMY", "WORLD WAR II"),
     "33-41": new Brick("RONALD J", "HORNER", "U S ARMY", "VIETNAM WAR"),
     "34-43": new Brick("DENNIS", "ROYER", "U S AIR FORCE", ""),
     "35-44": new Brick("DEAN B", "RIPKA", "U S ARMY", "WORLD WAR II"),
