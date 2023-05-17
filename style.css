@@ -7,3 +7,57 @@ html, body {
     justify-content: center;
     align-items: center;
 }
+
+body {
+    background-color: lightgray;
+}
+
+#picker {
+    position: absolute;
+    top: 10%;
+    border: 2px solid #000;
+    height: 25px;
+}
+
+#circle {
+    display: none;
+    position: absolute;
+    height: 100px;
+    width: 100px;
+    border-radius: 50%;
+    border: 5px solid #39ff14;
+    transform: translate(-50%, -50%);
+    box-shadow: inset 0 0 10px #000;
+    outline: 1px solid #000;
+}
+
+#portrait_blocker {
+    display: none;
+    background-color: lightgray;
+    width: 100%;
+    position: absolute;
+    height: 100%;
+    justify-content: center;
+    align-items: center;
+    font-size: 30px;
+}
+
+@media (any-pointer: coarse) {
+    @media screen and (max-width: 600px) {
+        #portrait_blocker {
+            display: flex;
+        }
+
+        #picker {
+            display: none;
+        }
+
+        #circle {
+            display: none !important;
+        }
+    }
+
+    #picker {
+        right: 0;
+    }
+}
