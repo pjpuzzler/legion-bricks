@@ -2,7 +2,6 @@ html, body {
     height: 100%;
     width: 100%;
     margin: 0;
-    overflow: hidden;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -12,9 +11,16 @@ body {
     background-color: lightgray;
 }
 
-#picker {
+h3 {
+    margin: 0;
+}
+
+#picker-container {
     position: absolute;
-    top: 10%;
+    top: 0;
+}
+
+#picker {
     border: 2px solid #000;
     height: 25px;
 }
@@ -48,7 +54,7 @@ body {
             display: flex;
         }
 
-        #picker {
+        #picker-container {
             display: none;
         }
 
@@ -57,7 +63,7 @@ body {
         }
     }
 
-    #picker {
+    #picker-container {
         right: 0;
     }
 }

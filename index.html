@@ -11,7 +11,10 @@
     </head>
     <body>
         <div id="portrait_blocker">Turn Phone to Landscape</div>
-        <select id="picker" onchange="updateCanvas()"></select>
+        <div id="picker-container">
+            <h3>Select name:</h3>
+            <select id="picker" onchange="updateCanvas()"></select>
+        </div>
         <canvas id="bricks-canvas"></canvas>
         <div id="circle"></div>
     </body>
