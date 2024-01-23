@@ -25,6 +25,17 @@ h3 {
     height: 25px;
 }
 
+#picker-info {
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+#picker-branch-img, #picker-branch-img2 {
+    height: 100px;
+    /* width: 100px; */
+}
+
 #circle {
     display: none;
     position: absolute;
@@ -55,6 +66,10 @@ h3 {
         }
 
         #picker-container {
+            display: none;
+        }
+
+        #picker-info, #picker-name, #picker-branch-img, #picker-branch-img2 {
             display: none;
         }
 

@@ -21,9 +21,11 @@ function updateCanvas() {
 }
 
 function updateCircle() {
-    const elCircle = document.getElementById("circle");
+    const elPicker = document.getElementById("picker"),
+        elCircle = document.getElementById("circle"),
+        elPickerInfo = document.getElementById("picker-info");
 
-    if (document.getElementById("picker").value !== "") {
+    if (elPicker.value !== "") {
         const elBricksCanvas = document.getElementById("bricks-canvas");
         if (highlightVertical) {
             elCircle.style.left = `${
@@ -40,8 +42,26 @@ function updateCircle() {
                 elBricksCanvas.offsetTop + highlightY + 0.5 - brickHeight / 2
             }px`;
         }
+
+        const brick = BRICKS[elPicker.selectedIndex - 1];
+
+        const elPickerName = document.getElementById("picker-name"),
+            elPickerBranchImg = document.getElementById("picker-branch-img"),
+            elPickerBranchImg2 = document.getElementById("picker-branch-img2");
+
+        elPickerName.innerHTML = `${brick.fname} ${brick.lname}<br/>${brick.conflict}`;
+        elPickerBranchImg.src = `./emblems/${brick.branchIds[0]}.png`;
+        if (brick.branchIds.length > 1) {
+            elPickerBranchImg2.style.display = "initial";
+            elPickerBranchImg2.src = `./emblems/${brick.branchIds[1]}.png`;
+        } else elPickerBranchImg2.style.display = "none";
+
         elCircle.style.display = "initial";
-    } else elCircle.style.display = "none";
+        elPickerInfo.style.display = "initial";
+    } else {
+        elCircle.style.display = "none";
+        elPickerInfo.style.display = "none";
+    }
 }
 
 function drawBricksCanvas() {
