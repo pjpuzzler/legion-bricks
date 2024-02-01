@@ -121,9 +121,9 @@ function drawBricksCanvas() {
                         x < canvas.width - brickHeight * 6)) &&
                     y > canvas.height - brickHeight * 21 &&
                     y < canvas.height - brickHeight * 18) ||
-                (((x < brickHeight * 41 && x > brickHeight * 39) ||
+                (((x < brickHeight * 41 && x > brickHeight * 7) ||
                     (x > canvas.width - brickHeight * 41 &&
-                        x < canvas.width - brickHeight * 39)) &&
+                        x < canvas.width - brickHeight * 7)) &&
                     y > canvas.height - brickHeight * 21 &&
                     y < canvas.height - brickHeight * 14) ||
                 (x < brickHeight * 78 &&
