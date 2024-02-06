@@ -83,7 +83,7 @@ const BRICKS = [
     new Brick("WALTER", "JOHNSON", "NAVY", [2], "KOREAN WAR", "25-15"),
     new Brick("LEROY", "JOHNSON", "ARMY & NAVY", [1, 2], "WWI & WWII", "24-14"),
     new Brick("CHALMER", "WEAVER", "ARMY", [1], "WWII", "29-19"),
-    new Brick("GERALD M", "JOHNSON", "NAVY", [2], "W W II, KOREAN WAR", "20-18"),
+    new Brick("GERALD M", "JOHNSON", "NAVY", [2], "WWII & KOREAN WAR", "20-18"),
     new Brick("GEORGE", "STRICKLER", "ARMY", [1], "WWII", "27-22"),
     new Brick("WILLIAM H", "HICKS", "AIR FORCE", [3], "VIETNAM WAR", "26-22"),
     new Brick("KEN L", "GUISEWITE", "ARMY", [1], "VIETNAM WAR", "25-23"),
@@ -119,7 +119,7 @@ const BRICKS = [
     new Brick("JAMES T", "LEEDY", "NAVY", [2], "VIETNAM WAR", "3-35"),
     new Brick("EARL C", "WEBER", "ARMY", [1], "WWI", "2-34"),
     new Brick("EARL", "ZETTLE", "ARMY", [1], "WWII", "2-35"),
-    new Brick("ANTHONY W", "LEEDY", "MARINES", [4], "VIETNAM WAR", "3-36"),
+    new Brick("ANTHONY W", "LEEDY", "MARINE CORPS", [4], "VIETNAM WAR", "3-36"),
     new Brick("MIKE LEEDY", "JOHNSON", "AIR FORCE", [3], "VIETNAM ERA", "4-36"),
     new Brick("JOHN R", "ROSE", "MARINE CORPS", [4], "WWII", "3-38"),
     new Brick("DAVID V", "NEESE", "NAVY", [2], "VIETNAM WAR", "8-38"),
@@ -308,6 +308,18 @@ const BRICKS = [
     new Brick("MICHAEL", "KRONER", "ARMY", [1], "IRAQI FREEDOM", "46-37"),
     new Brick("CHESTER", "PLETCHER", "ARMY", [1], "WWII", "44-38"),
     new Brick("HAROLD W", "SMITH", "ARMY AIR CORPS", [6], "WWII", "44-36"),
+
+    new Brick("CHUCK", "GRUBB", "ARMY", [1], "VIETNAM WAR", "49-8"),
+    new Brick("LEON", "STINGER", "ARMY", [1], "KOREAN WAR", "37-10"),
+    new Brick("TOM", "BREON", "AIR FORCE", [3], "VIETNAM WAR", "24-19"),
+    new Brick("STEPHEN", "ZELZNICK", "MARINE CORPS", [4], "", "20-23"),
+    new Brick("KEVIN", "LONG", "ARMY", [1], "", "26-31"),
+    new Brick("KERRY", "HORNER", "ARMY", [1], "LEBANON/GRENADA", "23-27"),
+    new Brick("MIKE", "BLOOM", "MARINE CORPS", [4], "VIETNAM WAR", "31-19"),
+    new Brick("ROBERT LEE", "BLOOM", "MARINE CORPS", [4], "", "32-19"),
+    new Brick("G. H.", "JOHNSTONBAUGH", "ARMY", [1], "KOREAN WAR", "33-20"),
+    new Brick("WILLIAM R.", "GUZIK", "AIR FORCE", [3], "KOREAN WAR", "34-20"),
+    new Brick("CHRISTIAN", "FEIT", "NAVY", [2], "VIETNAM WAR", "49-37"),
 ];
 
 BRICKS.sort(
