@@ -1,36 +1,35 @@
 class Brick {
-    constructor(fname, lname, branch, branchIds, conflict, coords) {
-        this.fname = fname;
-        this.lname = lname;
-        this.branch = branch;
-        this.branchIds = branchIds;
-        this.conflict = conflict;
-        this.coords = coords;
-    }
+  constructor(fname, lname, branch, branchIds, conflict, coords) {
+    this.fname = fname;
+    this.lname = lname;
+    this.branch = branch;
+    this.branchIds = branchIds;
+    this.conflict = conflict;
+    this.coords = coords;
+  }
 
-    getString() {
-        let str = `${this.lname}, ${this.fname} `;
+  getString() {
+    let str = `${this.lname}, ${this.fname} `;
 
-        const similarBricks = BRICKS.filter(
-            (b) =>
-                b !== this && b.fname === this.fname && b.lname === this.lname
-        );
+    const similarBricks = BRICKS.filter(
+      (b) => b !== this && b.fname === this.fname && b.lname === this.lname,
+    );
 
-        if (this.branch && similarBricks.some((b) => b.branch !== this.branch))
-            str += ` / ${this.branch}`;
+    if (this.branch && similarBricks.some((b) => b.branch !== this.branch))
+      str += ` / ${this.branch}`;
 
-        if (
-            this.conflict &&
-            similarBricks.some((b) => b.conflict !== this.conflict)
-        )
-            str += ` / ${this.conflict}`;
+    if (
+      this.conflict &&
+      similarBricks.some((b) => b.conflict !== this.conflict)
+    )
+      str += ` | ${this.conflict}`;
 
-        return str;
-    }
+    return str;
+  }
 }
 
 const m = 72,
-    n = 160;
+  n = 160;
 
 // prettier-ignore
 const BRICKS = [
@@ -350,19 +349,19 @@ const BRICKS = [
 ];
 
 BRICKS.sort(
-    (a, b) =>
-        a.lname.localeCompare(b.lname) ||
-        a.fname.localeCompare(b.fname) ||
-        a.branch.localeCompare(b.branch) ||
-        a.conflict.localeCompare(b.conflict)
+  (a, b) =>
+    a.lname.localeCompare(b.lname) ||
+    a.fname.localeCompare(b.fname) ||
+    a.branch.localeCompare(b.branch) ||
+    a.conflict.localeCompare(b.conflict),
 );
 
 const COORDS = new Set(BRICKS.map((b) => b.coords));
 
 const brickHeight = 4,
-    brickWidth = 8,
-    brickColor = "#eb9b4b",
-    brickColor2 = "#bc6915",
-    edgeColor = "gray",
-    brickHighlightColor = "#39ff14",
-    brickOutlineColor = "#000";
+  brickWidth = 8,
+  brickColor = "#eb9b4b",
+  brickColor2 = "#bc6915",
+  edgeColor = "gray",
+  brickHighlightColor = "#39ff14",
+  brickOutlineColor = "#000";
