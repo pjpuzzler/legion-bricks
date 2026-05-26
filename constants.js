@@ -1,15 +1,40 @@
 class Brick {
-  constructor(fname, lname, branch, branchIds, conflict, coords) {
+  constructor(
+    fname,
+    lname,
+    branch,
+    branchIds,
+    conflict,
+    coords,
+    color = "orange",
+  ) {
     this.fname = fname;
     this.lname = lname;
     this.branch = branch;
     this.branchIds = branchIds;
     this.conflict = conflict;
     this.coords = coords;
+    this.color = color;
   }
 
   getString() {
-    let str = `${this.lname}, ${this.fname} `;
+    let str = this.getBaseString();
+
+    const sameBaseBricks = BRICKS.filter(
+      (b) => b !== this && b.getBaseString() === str,
+    );
+    if (sameBaseBricks.some((b) => b.color !== this.color)) {
+      str += ` (${this.color === "gray" ? "Gray" : "Orange"})`;
+    }
+
+    return str;
+  }
+
+  getBaseString() {
+    let str =
+      this.fname && this.lname
+        ? `${this.lname}, ${this.fname}`
+        : `${this.lname || this.fname}`;
 
     const similarBricks = BRICKS.filter(
       (b) => b !== this && b.fname === this.fname && b.lname === this.lname,
@@ -316,8 +341,8 @@ const BRICKS = [
     new Brick("KERRY", "HORNER", "ARMY", [1], "LEBANON/GRENADA", "23-27"),
     new Brick("MIKE", "BLOOM", "MARINE CORPS", [4], "VIETNAM WAR", "31-19"),
     new Brick("ROBERT LEE", "BLOOM", "MARINE CORPS", [4], "", "32-19"),
-    new Brick("G. H.", "JOHNSTONBAUGH", "ARMY", [1], "KOREAN WAR", "33-20"),
-    new Brick("WILLIAM R.", "GUZIK", "AIR FORCE", [3], "KOREAN WAR", "34-20"),
+    new Brick("G H", "JOHNSTONBAUGH", "ARMY", [1], "KOREAN WAR", "33-20"),
+    new Brick("WILLIAM R", "GUZIK", "AIR FORCE", [3], "KOREAN WAR", "34-20"),
     new Brick("CHRISTIAN", "FEIT", "NAVY", [2], "VIETNAM WAR", "49-37"),
 
     new Brick("MARILYN A", "KUBALAK", "ARMY NURSE CORPS", [8], "VIETNAM WAR", "24-55"),
@@ -346,6 +371,35 @@ const BRICKS = [
     new Brick("DONALD C", "MILLER", "NAVY & MARINE CORPS", [2, 4], "WWII & KOREAN WAR & VIETNAM WAR", "32-42"),
     new Brick("JOSEPH D", "SLENKER", "ARMY AIR CORPS", [6], "WWII", "27-34"),
     new Brick("ELWOOD F", "FOHRINGER", "ARMY", [1], "WWII", "28-34"),
+
+    new Brick("DALE", "KENSINGER", "AIR FORCE", [3], "", "24-39"),
+    new Brick("KENNETH D", "ROYER", "AIR FORCE", [3], "VIETNAM WAR", "26-39"),
+    new Brick("CHARLES R", "ROWLES", "ARMY", [1], "KOREAN WAR", "26-40"),
+    new Brick("JAMES T", "HOLDEN", "NAVY & MARINE CORPS", [2, 4], "VIETNAM WAR", "27-36"),
+    new Brick("", "LEATHERNECKS NATION", "", [], "", "27-41"),
+    new Brick("JEFFREY", "HOLDEN", "ARMY", [1], "VIETNAM WAR", "28-35"),
+    new Brick("GEORGE H", "TAYLOR", "MARINE CORPS", [4], "WWII", "28-36"),
+    new Brick("POST 779", "CHARTER SIGNERS", "", [], "", "53-37", "gray"),
+    new Brick("FRED E", "HOMAN", "ARMY", [1], "WWII", "54-36", "gray"),
+    new Brick("JOHN L", "PUFF", "ARMY", [1], "WWII", "54-37", "gray"),
+    new Brick("MARY", "SLEGAL", "", [], "", "55-36", "gray"),
+    new Brick("PAUL D", "BREON", "NAVY", [2], "WWII", "55-37", "gray"),
+    new Brick("JAMES A", "BRADFORD", "ARMY", [1], "WWII", "55-38", "gray"),
+    new Brick("MEREDITH", "COLDREN", "NAVY", [2], "WWII", "56-35", "gray"),
+    new Brick("EDWIN S", "LOHR", "", [], "", "56-36", "gray"),
+    new Brick("BOB E", "WETZEL", "", [], "", "56-37", "gray"),
+    new Brick("HAROLD E", "LEIGHTLEY", "ARMY AIR CORPS", [6], "WWII", "56-38", "gray"),
+    new Brick("DONALD M", "GOODHART", "ARMY", [1], "WWII", "57-36", "gray"),
+    new Brick("WILLIAM W", "KERLIN", "ARMY", [1], "WWI", "57-37", "gray"),
+    new Brick("DEAN B", "RIPKA", "ARMY", [1], "WWII", "57-38", "gray"),
+    new Brick("RICHARD M", "BARGER", "ARMY", [1], "WWII", "58-35", "gray"),
+    new Brick("EDWARD C", "VOGT JR", "ARMY", [1], "WWII", "58-36", "gray"),
+    new Brick("GEORGE W", "MARTZ", "ARMY", [1], "WWII", "58-37", "gray"),
+    new Brick("GEORGE F", "SMITH", "ARMY", [1], "WWI", "59-36", "gray"),
+    new Brick("DONALD E", "COLDRON", "ARMY", [1], "WWII", "59-37", "gray"),
+    new Brick("JOHN G", "PUFF", "", [], "", "59-38", "gray"),
+    new Brick("NEWTON S", "CRAWFORD", "ARMY", [1], "WWII", "60-35", "gray"),
+    new Brick("JACOB", "LUSE", "ARMY", [1], "WWII", "60-36", "gray"),
 ];
 
 BRICKS.sort(
@@ -358,10 +412,15 @@ BRICKS.sort(
 
 const COORDS = new Set(BRICKS.map((b) => b.coords));
 
+const DEBUG_MODE = false;
+
 const brickHeight = 4,
   brickWidth = 8,
   brickColor = "#eb9b4b",
   brickColor2 = "#bc6915",
-  edgeColor = "gray",
+  brickGrayColor = "#a6a6a6",
+  brickDebugDraftColor = "#2477d4",
+  brickDebugGrayDraftColor = "#bcbcbc",
+  edgeColor = "#777",
   brickHighlightColor = "#39ff14",
   brickOutlineColor = "#000";

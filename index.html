@@ -5,6 +5,7 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Post 779 Brick Finder</title>
+    <link rel="icon" type="image/jpeg" href="logo.jpeg" />
     <link rel="stylesheet" href="style.css" />
     <script src="constants.js"></script>
     <script src="script.js"></script>
@@ -21,6 +22,57 @@
       <br />
       <img id="picker-branch-img2" />
     </div>
+    <div id="debug-panel">
+      <div class="debug-panel-header">
+        <strong>Brick debug</strong>
+        <button id="debug-copy" type="button">Copy code</button>
+      </div>
+      <div id="debug-count"></div>
+      <textarea id="debug-output" readonly></textarea>
+    </div>
+    <div id="debug-tooltip"></div>
+    <dialog id="debug-editor">
+      <form method="dialog" id="debug-form">
+        <h3 id="debug-editor-title">Edit brick</h3>
+        <label>
+          Coordinates
+          <input id="debug-coords" readonly />
+        </label>
+        <label>
+          First name / first text
+          <input id="debug-fname" autocomplete="off" />
+        </label>
+        <label>
+          Last name / second text
+          <input id="debug-lname" autocomplete="off" />
+        </label>
+        <label>
+          Service text
+          <input id="debug-branch" autocomplete="off" />
+        </label>
+        <div class="debug-field">
+          Emblem image(s)
+          <div id="debug-branch-ids" class="debug-emblems"></div>
+        </div>
+        <label>
+          Brick color
+          <select id="debug-color">
+            <option value="orange">Orange</option>
+            <option value="gray">Gray</option>
+          </select>
+        </label>
+        <label>
+          War / date / extra text
+          <textarea id="debug-conflict"></textarea>
+        </label>
+        <div class="debug-actions">
+          <button id="debug-delete" type="button">Delete draft</button>
+          <span></span>
+          <button value="cancel" type="submit">Close</button>
+          <button id="debug-save" value="default" type="button">Save</button>
+        </div>
+      </form>
+    </dialog>
     <canvas id="bricks-canvas"></canvas>
     <div id="circle"></div>
   </body>
