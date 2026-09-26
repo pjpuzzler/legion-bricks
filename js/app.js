@@ -44,7 +44,6 @@ const App = (() => {
     active: -1, // result highlighted with the arrow keys
     selectedId: null,
     cardFolded: false, // phones: the card shrinks to a bar while the map is being looked around
-    introFolded: false, // phones: the welcome folds down to its button once the map is moved
     editor: null,
   };
   let map;
@@ -345,67 +344,66 @@ const App = (() => {
   function renderCard() {
     const b = selected();
     document.body.classList.toggle("has-brick", !!b);
-    const folded = !state.editor && compact.matches && (b ? state.cardFolded : state.introFolded);
+    const folded = !state.editor && !!b && compact.matches && state.cardFolded,
+      welcome = !state.editor && !b && compact.matches;
     el.card.classList.toggle("is-folded", folded);
+    el.card.classList.toggle("is-intro", welcome);
     if (state.editor) {
       state.editor.renderCard(el.card, b);
       layoutChanged();
       return;
     }
     if (!b) {
-      // Phones get a short welcome in the space where a brick's card goes. It
-      // folds like a brick's card, down to the See all names button.
-      el.card.hidden = !compact.matches;
-      el.card.replaceChildren(...(compact.matches ? intro(folded) : []));
+      // Phones get the button to every name where a brick's card goes.
+      el.card.hidden = !welcome;
+      el.card.replaceChildren(...(welcome ? intro() : []));
       layoutChanged();
       return;
     }
     el.card.hidden = false;
-    // A slim bar (branch, share, close) over the brick itself. On a phone the
-    // card folds down to just the bar, with the name, while the map is being
-    // looked around, and tapping the bar brings the brick back.
+    // The brick itself, with close and share beside it. On a phone the card
+    // folds down to a slim bar with the name while the map is being looked
+    // around, and tapping the bar brings the brick back.
     const emblems = Model.emblemsFor(b).slice(0, 2),
       toggle = () => !swiped() && fold(!state.cardFolded);
-    const parts = [
-      compact.matches
-        ? h("button", {
-            type: "button",
-            class: "card-grab",
-            "aria-label": folded ? "Show the brick" : "Make the card smaller",
-            "aria-expanded": String(!folded),
-            onclick: toggle,
-          })
-        : null,
+    el.card.replaceChildren(
       h(
         "div",
-        { class: "card-bar", onclick: (e) => compact.matches && !e.target.closest("button") && toggle() },
-        emblems.length ? h("span", { class: "card-emblems" }, emblems.map((k) => emblemImg(k, "card-emblem", ""))) : null,
+        { class: "brick-card" },
+        compact.matches
+          ? h("button", {
+              type: "button",
+              class: "card-grab",
+              "aria-label": folded ? "Show the brick" : "Make the card smaller",
+              "aria-expanded": String(!folded),
+              onclick: toggle,
+            })
+          : null,
         h(
           "div",
-          { class: "card-title" },
+          { class: "card-bar", onclick: (e) => compact.matches && !e.target.closest("button") && toggle() },
+          emblems.length
+            ? h("span", { class: "card-emblems" }, emblems.map((k) => emblemImg(k, "card-emblem", Model.EMBLEMS[k].name)))
+            : null,
           h("p", { class: "card-name" }, Model.fullName(b) || "(no name yet)"),
-          h(
-            "p",
-            { class: "card-branch" },
-            emblems.length ? emblems.map((k) => Model.EMBLEMS[k].name).join(" & ") : "Memorial brick",
-          ),
+          h("button", { type: "button", class: "icon-btn card-open", "aria-label": "Show the brick", title: "Show the brick", onclick: () => fold(false) }, icon("open")),
         ),
-        h("button", { type: "button", class: "icon-btn card-open", "aria-label": "Show the brick", title: "Show the brick", onclick: () => fold(false) }, icon("open")),
-        h("button", { type: "button", class: "icon-btn card-share", "aria-label": "Share", title: "Share", onclick: () => share(b) }, icon("share")),
-        h("button", { type: "button", class: "icon-btn", "aria-label": "Close", title: "Close", onclick: deselect }, icon("close")),
+        replica(b),
+        h(
+          "div",
+          { class: "card-actions" },
+          h("button", { type: "button", class: "icon-btn", "aria-label": "Close", title: "Close", onclick: deselect }, icon("close")),
+          h("button", { type: "button", class: "icon-btn card-share", "aria-label": "Share", title: "Share", onclick: () => share(b) }, icon("share")),
+        ),
+        b.slot ? null : h("p", { class: "card-note" }, "This brick isn't on the map yet."),
       ),
-      replica(b),
-      b.slot ? null : h("p", { class: "card-note" }, "This brick isn't on the map yet."),
-    ];
-    el.card.replaceChildren(...parts.filter(Boolean));
+    );
     layoutChanged();
   }
 
-  // Folds the phone card (a brick's, or the welcome) or opens it back up.
   function fold(on) {
-    const key = selected() ? "cardFolded" : "introFolded";
-    if (state[key] === on) return;
-    state[key] = on;
+    if (state.cardFolded === on) return;
+    state.cardFolded = on;
     renderCard();
     // Opened back up, the card covers more of the map than before.
     if (!on) keepBrickInSight();
@@ -426,7 +424,7 @@ const App = (() => {
     let start = null;
     el.card.addEventListener("pointerdown", (e) => {
       const upright = compact.matches && !sideways.matches;
-      if (!upright || state.editor || e.target.closest(".card-bar button")) return;
+      if (!upright || state.editor || !selected() || e.target.closest(".card-bar button, .card-actions")) return;
       start = { id: e.pointerId, y: e.clientY };
     });
     el.card.addEventListener("pointerup", (e) => {
@@ -440,34 +438,20 @@ const App = (() => {
     el.card.addEventListener("pointercancel", () => (start = null));
   }
 
-  function intro(folded) {
+  function intro() {
     return [
-      h("button", {
-        type: "button",
-        class: "card-grab",
-        "aria-label": folded ? "Show more" : "Show less",
-        "aria-expanded": String(!folded),
-        onclick: () => !swiped() && fold(!folded),
-      }),
-      h("p", { class: "intro-title" }, "Find a memorial brick"),
-      h("p", { class: "intro-text" }, "Type a name in the box above, or look through every name."),
       h(
-        "div",
-        { class: "intro-bar" },
-        h(
-          "button",
-          {
-            type: "button",
-            class: "btn btn-primary btn-big",
-            onclick: () => {
-              setSearching(true);
-              // A phone's keyboard would cover the names they asked to see.
-              if (hover.matches) el.search.focus();
-            },
+        "button",
+        {
+          type: "button",
+          class: "btn btn-primary btn-big",
+          onclick: () => {
+            setSearching(true);
+            // A phone's keyboard would cover the names they asked to see.
+            if (hover.matches) el.search.focus();
           },
-          `See all ${state.bricks.length} names`,
-        ),
-        h("button", { type: "button", class: "icon-btn card-open", "aria-label": "Show more", title: "Show more", onclick: () => fold(false) }, icon("open")),
+        },
+        `See all ${state.bricks.length} names`,
       ),
     ];
   }
@@ -490,7 +474,8 @@ const App = (() => {
     const open = compact.matches && !el.card.hidden,
       side = open && sideways.matches,
       bottom = open && !side ? el.card.offsetHeight + 12 : 0,
-      left = side && !el.card.classList.contains("is-folded") ? el.card.offsetWidth + 12 : 0;
+      tucked = el.card.classList.contains("is-folded") || el.card.classList.contains("is-intro"),
+      left = side && !tucked ? el.card.offsetWidth + 12 : 0;
     el.mapWrap.style.setProperty("--sheet", `${bottom}px`);
     // Sideways the zoom buttons run down the right edge. With the side panel
     // open the plaza is squeezed, so it keeps clear of them. With it folded
@@ -559,10 +544,9 @@ const App = (() => {
     },
   };
 
-  // Looking around the map on a phone folds the card (a brick's, or the
-  // welcome) out of the way.
+  // Looking around the map on a phone folds the brick card out of the way.
   function foldForMap() {
-    if (!state.editor && compact.matches) fold(true);
+    if (!state.editor && compact.matches && selected()) fold(true);
   }
 
   // ---- about ----------------------------------------------------------------

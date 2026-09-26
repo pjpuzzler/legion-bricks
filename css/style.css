@@ -471,12 +471,46 @@ select {
   text-transform: uppercase;
 }
 
-/* A visitor's card: a slim bar (branch, share, close) over the brick. */
-.card-bar {
+/* A visitor's card: the brick itself, with close and share beside it. On a
+   phone it folds down to a slim bar with the name (see renderCard in app.js). */
+.brick-card {
+  --brick-w: 300px;
+  display: grid;
+  grid-template-columns: minmax(0, var(--brick-w)) auto;
+  grid-template-areas:
+    "grab grab"
+    "brick actions"
+    "note note";
+  justify-content: center;
+  align-items: start;
+  column-gap: 8px;
+}
+
+.card-grab {
+  grid-area: grab;
+}
+
+.card-bar,
+.brick-card .replica {
+  grid-area: brick;
+}
+
+.card-actions {
+  grid-area: actions;
   display: flex;
+  flex-direction: column;
+  margin: -4px -8px 0 0;
+}
+
+.card-note {
+  grid-area: note;
+}
+
+.card-bar {
+  display: none;
   align-items: center;
-  gap: 8px;
-  margin: 0 -10px 10px 0;
+  gap: 10px;
+  min-width: 0;
 }
 
 .card-emblems {
@@ -486,27 +520,22 @@ select {
 }
 
 .card-emblem {
-  width: 46px;
-  height: 46px;
+  width: 32px;
+  height: 32px;
   object-fit: contain;
 }
 
 /* Two branches: a little smaller each, so the name keeps its room. */
 .card-emblems:has(.card-emblem + .card-emblem) .card-emblem {
-  width: 38px;
-  height: 38px;
+  width: 28px;
+  height: 28px;
 }
 
-.card-title {
+/* Long names wrap onto a second line rather than getting cut off. */
+.card-name {
+  display: -webkit-box;
   flex: 1;
   min-width: 0;
-  margin-right: 4px;
-}
-
-/* The name only shows in the bar when the card is folded (on phones). Long
-   names wrap onto a second line rather than getting cut off. */
-.card-name {
-  display: none;
   margin: 0;
   overflow: hidden;
   font-size: 16px;
@@ -517,41 +546,33 @@ select {
   -webkit-box-orient: vertical;
 }
 
-.card-branch {
-  margin: 0;
-  color: var(--gold-700);
-  font-size: 13px;
-  font-weight: 800;
-  line-height: 1.25;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
 .card-grab,
 .card .card-open {
   display: none;
+}
+
+/* Folded: the bar in place of the brick, and the buttons in a row after it. */
+.card.is-folded .brick-card {
+  grid-template-columns: minmax(0, 1fr) auto;
+  justify-content: stretch;
+  align-items: center;
+}
+
+.card.is-folded .card-bar {
+  display: flex;
 }
 
 .card.is-folded .card-open {
   display: grid;
 }
 
-.card.is-folded .card-name {
-  display: -webkit-box;
-}
-
-.card.is-folded .card-branch {
-  font-size: 11.5px;
-}
-
-.card.is-folded .card-bar {
-  margin-bottom: 0;
+.card.is-folded .card-actions {
+  flex-direction: row-reverse; /* close last, at the edge */
+  margin-top: 0;
 }
 
 .card.is-folded .replica,
-.card.is-folded .card-note,
-.card.is-folded .intro-title,
-.card.is-folded .intro-text {
+.card.is-folded .card-note {
   display: none;
 }
 
@@ -691,30 +712,6 @@ select {
 
 .replica.is-gray .replica-light {
   fill: rgb(255 255 255 / 0.35);
-}
-
-.intro-title {
-  margin: 4px 0 4px;
-  font-family: var(--font-serif);
-  font-size: 23px;
-  font-weight: 600;
-}
-
-.intro-text {
-  margin: 0 0 14px;
-  color: var(--ink-2);
-  font-size: 17px;
-}
-
-/* The See all names button, which stays when the welcome folds. */
-.intro-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.intro-bar .card-open {
-  margin-left: auto;
 }
 
 /* ---- map ---------------------------------------------------------------- */
@@ -1279,6 +1276,15 @@ select {
     padding-bottom: calc(10px + env(safe-area-inset-bottom));
   }
 
+  /* The welcome: just the button to every name, across the card. */
+  .card.is-intro {
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  }
+
+  .card.is-intro .btn-big {
+    width: 100%;
+  }
+
   /* The little handle on top: tap it (or the bar) to fold or unfold the card. */
   .card-grab {
     display: block;
@@ -1308,11 +1314,6 @@ select {
   /* Upright, the handle on top is what opens a folded card. */
   .card.is-folded .card-open {
     display: none;
-  }
-
-  /* Folded, the welcome is just the button, across the card. */
-  .card.is-folded .intro-bar .btn-big {
-    flex: 1;
   }
 
   /* Swipes on the card fold and open it (see bindCardSwipe in app.js). */
@@ -1443,9 +1444,11 @@ select {
     rotate: 180deg;
   }
 
-  .card.is-folded {
+  /* Folded, and the welcome: only as tall as what's in them. */
+  .card.is-folded,
+  .card.is-intro {
     bottom: auto;
-    padding-bottom: 10px;
+    padding: calc(var(--search-row) + 2px) 16px 10px max(16px, env(safe-area-inset-left));
     border-radius: 0 20px 20px 0;
     border-width: 0 1px 1px 0;
   }
@@ -1462,18 +1465,7 @@ select {
     grid-auto-flow: row;
   }
 
-  /* Safari's bars leave little height, so the welcome is tighter. */
-  .intro-title {
-    margin: 2px 0;
-    font-size: 20px;
-    line-height: 1.25;
-  }
-
-  .intro-text {
-    margin-bottom: 12px;
-    font-size: 15px;
-  }
-
+  /* Safari's bars leave little height. */
   .card .btn-big {
     height: 48px;
     font-size: 16px;
@@ -1509,8 +1501,8 @@ select {
 
 /* Short phones (like the iPhone SE): a smaller brick leaves the map more room. */
 @media (max-width: 899px) and (max-height: 740px), (orientation: landscape) and (max-height: 500px) {
-  .card .replica {
-    max-width: 260px;
+  .brick-card {
+    --brick-w: 260px;
   }
 }
 
@@ -1518,17 +1510,6 @@ select {
   .brand-kicker {
     font-size: 9.5px;
     letter-spacing: 0.12em;
-  }
-
-  /* So even "Army Air Corps & Air Force" fits on two lines. */
-  .card-branch {
-    font-size: 12px;
-    letter-spacing: 0.06em;
-  }
-
-  .card-emblems:has(.card-emblem + .card-emblem) .card-emblem {
-    width: 32px;
-    height: 32px;
   }
 }
 
@@ -1549,15 +1530,14 @@ select {
   }
 
   .card-emblem {
-    width: 34px;
-    height: 34px;
+    width: 28px;
+    height: 28px;
   }
 
   .card-emblems:has(.card-emblem + .card-emblem) .card-emblem {
-    width: 26px;
-    height: 26px;
+    width: 24px;
+    height: 24px;
   }
-
 }
 
 /* Narrower still (only with the text size turned up): in About, each bar

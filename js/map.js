@@ -9,6 +9,8 @@ const MapView = (() => {
     grass: "#97a95b",
     lot: "#6d7075",
     lotLine: "#f1efe8",
+    road: "#8b8781", // older asphalt, lighter than the lot's
+    roadYellow: "#e2b53e",
     concrete: "#e9e4da",
     concreteLine: "#cfc7b8",
     gravel: "#d5ccbd",
@@ -50,7 +52,6 @@ const MapView = (() => {
   const FONT =
     '"HelveticaNeue-CondensedBold", "Helvetica Neue", "Roboto Condensed", sans-serif-condensed, "Arial Narrow", Helvetica, Arial, sans-serif';
   const MAX_SCALE = 110; // screen px per brick unit
-  const PAN_ROOM = 16; // how far past the plaza's edges you can move once zoomed in
   const OVERSHOOT = 40; // how far (screen px) a drag can pull the map past its limits
   const MIN_TEXT_PX = 6.5;
   // Flags are part of the drawing: sized in brick units, so they scale with
@@ -335,6 +336,23 @@ const MapView = (() => {
     out.monumentStone = new Path2D();
     out.monumentStone.rect(m.left + 1, m.top + 1, m.right - m.left - 2, m.bottom - m.top - 2);
 
+    // The road behind the plaza: two lanes, with a white line along each edge
+    // and a double yellow line down the middle. Long enough that its ends
+    // never come into view.
+    {
+      const { origin, along, across, lane } = Plan.road,
+        at = (s, d) => [origin[0] + along[0] * s + across[0] * d, origin[1] + along[1] * s + across[1] * d],
+        band = (path, from, to) => polygon(path, [at(-600, from), at(600, from), at(600, to), at(-600, to)]);
+      out.road = new Path2D();
+      band(out.road, -2.5, 2 * lane + 2.5);
+      out.roadWhite = new Path2D();
+      band(out.roadWhite, -0.75, 0.75);
+      band(out.roadWhite, 2 * lane - 0.75, 2 * lane + 0.75);
+      out.roadYellow = new Path2D();
+      band(out.roadYellow, lane - 1.8, lane - 0.6);
+      band(out.roadYellow, lane + 0.6, lane + 1.8);
+    }
+
     // Parking lot: angled spaces, with concrete wheel stops in the ones in
     // front of the memorial. Wide enough that its ends never come into view.
     const P = S.parking,
@@ -519,24 +537,27 @@ const MapView = (() => {
       return this.clampView(this.placeWorldAt(v, Plan.centre, this.focusPoint()));
     }
 
-    // The limits: you can't zoom out past the whole plaza, and the plaza can
-    // only be moved as far as it overflows the screen, plus a little room that
-    // grows as you zoom in. All the way out it's held in the middle, so it
-    // springs back there after a drag, and zooming back out settles it there
-    // too. With keepScale the zoom is left alone and only the position is fixed.
+    // The limits: you can't zoom out past the whole plaza, and the map can
+    // only be moved as far as what it's allowed to show overflows the screen.
+    // All the way out that's the whole-plaza frame, so the plaza is held in
+    // the middle, springs back there after a drag, and settles there when
+    // zoomed back out. Zooming in opens up the rest (the world, out to the
+    // road) bit by bit, all of it by twice the zoom. With keepScale the zoom
+    // is left alone and only the position is fixed.
     clampView(v = this.view, keepScale = false) {
       const fitScale = this.fitScale(v.angle);
       if (!keepScale) v.scale = clamp(v.scale, fitScale, MAX_SCALE);
-      const b = Plan.frame,
+      const open = clamp(v.scale / fitScale - 1, 0, 1),
+        mix = (k) => Plan.frame[k] + (Plan.world[k] - Plan.frame[k]) * open,
+        b = { left: mix("left"), right: mix("right"), top: mix("top"), bottom: mix("bottom") },
         i = this.insets,
         c = Math.abs(Math.cos(v.angle)),
         s = Math.abs(Math.sin(v.angle)),
         seenW = Math.max(1, this.size.w - i.left - i.right) / v.scale,
         seenH = Math.max(1, this.size.h - i.top - i.bottom) / v.scale,
-        room = PAN_ROOM * clamp(v.scale / fitScale - 1, 0, 1),
         limit = (value, lo, hi, half, centre) => {
-          const min = lo + half - room,
-            max = hi - half + room;
+          const min = lo + half,
+            max = hi - half;
           return min > max ? clamp(centre, max, min) : clamp(value, min, max);
         },
         focus = this.focusPoint(),
@@ -791,6 +812,14 @@ const MapView = (() => {
       ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
       this.worldTransform();
       ctx.lineJoin = "round";
+
+      // The road
+      ctx.fillStyle = C.road;
+      ctx.fill(S.road);
+      ctx.fillStyle = C.lotLine;
+      ctx.fill(S.roadWhite);
+      ctx.fillStyle = C.roadYellow;
+      ctx.fill(S.roadYellow);
 
       // Parking lot
       ctx.fillStyle = C.concrete;

@@ -43,6 +43,12 @@ const Plan = (() => {
     // in front of the memorial have wheel stops. The last of those ends at the
     // middle of the path's square end on the right.
     parking: { spacing: 29, depth: 54, lean: 0.58, stops: 6 },
+    // Earlystown Road, out past the flags, measured off an aerial photo. It
+    // isn't square to the plaza: it comes a little closer on the right. In
+    // line with the monument, the white line along its near edge is 95 units
+    // (about 32 ft) past the top of the curb, and it drops 0.136 units toward
+    // the plaza for every unit to the right. Each lane is 34 units (11 ft).
+    road: { gap: 95, slope: 0.136, lane: 34 },
   };
 
   const R = { field: SHAPE.fieldRadius };
@@ -236,6 +242,20 @@ const Plan = (() => {
     plazaMiddle = (SHAPE.arcY - R.curbOut + walkway.bottom) / 2,
     centre = [SHAPE.axis, (bricksMiddle + plazaMiddle) / 2];
 
+  // The road: where its near white line crosses the line through the
+  // monument, the way it runs (left to right), and the way across it (away
+  // from the plaza), as unit vectors.
+  const road = (() => {
+    const { gap, slope, lane } = SHAPE.road,
+      len = Math.hypot(1, slope);
+    return {
+      origin: [SHAPE.axis, SHAPE.arcY - R.curbOut - gap],
+      along: [1 / len, slope / len],
+      across: [slope / len, -1 / len],
+      lane,
+    };
+  })();
+
   // What the whole-plaza view shows: the walls, the walkway and the flags
   // over them, centred on the plaza. The flags fly to the right, so it
   // reaches just past the flag at 30°. The poles at the two ends are out
@@ -250,6 +270,15 @@ const Plan = (() => {
       bottom: lotY + 10,
     };
 
+  // How far the map can be moved once zoomed in: over to the benches and the
+  // first shrubs, a way into the parking lot, and back across the road.
+  const world = {
+    left: SHAPE.axis - R.curbOut - 30,
+    right: SHAPE.axis + R.curbOut + 30,
+    top: road.origin[1] - 2 * road.lane - 12,
+    bottom: lotY + 30,
+  };
+
   return {
     SHAPE,
     R,
@@ -258,6 +287,8 @@ const Plan = (() => {
     pads,
     centre,
     frame,
+    world,
+    road,
     drawable,
     slots,
     slotAt,
