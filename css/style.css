@@ -45,10 +45,16 @@ body {
   height: 100%;
 }
 
+/* No double-tap zoom on buttons (pinching still zooms the page). */
+html {
+  touch-action: manipulation;
+}
+
 body {
   margin: 0;
   display: grid;
   grid-template-rows: var(--topbar-h) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr); /* never wider than the screen */
   height: 100dvh;
   overflow: hidden;
   background: var(--paper);
@@ -1351,6 +1357,59 @@ select {
   .card-emblems:has(.card-emblem + .card-emblem) .card-emblem {
     width: 32px;
     height: 32px;
+  }
+}
+
+/* Very narrow: a small phone, or Safari's text size turned up (at 150% an
+   iPhone is about 260px wide). */
+@media (max-width: 340px) {
+  .brand-kicker {
+    display: none;
+  }
+
+  .brand-title {
+    font-size: 17px;
+    white-space: normal;
+  }
+
+  .topbar-btn {
+    padding: 0 11px;
+  }
+
+  .card-emblem {
+    width: 34px;
+    height: 34px;
+  }
+
+  .card-emblems:has(.card-emblem + .card-emblem) .card-emblem {
+    width: 26px;
+    height: 26px;
+  }
+
+}
+
+/* Narrower still (only with the text size turned up): in About, each bar
+   goes under its label so the bars keep their length. */
+@media (max-width: 300px) {
+  .about-kicker {
+    display: none;
+  }
+
+  .bars {
+    gap: 3px;
+  }
+
+  .bars li {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 1px 10px;
+    min-height: 0;
+    font-size: 14px;
+  }
+
+  .bars-track {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    height: 7px;
   }
 }
 

@@ -249,24 +249,26 @@ const MapView = (() => {
     out.curb = halfRing(axis, arcY, R.gravelOut, R.curbOut);
     for (const p of Plan.pads) out.curb.rect(p.left, p.top, p.right - p.left, p.bottom - p.top);
 
-    // Stones in the gravel beds.
+    // Stones in the gravel: the ring behind the wall, and the beds beside the
+    // walkway (those go down first, under the shrubs, bench and path).
     const rand = mulberry32(779);
-    out.stonesDark = new Path2D();
-    out.stonesLight = new Path2D();
-    const stone = (x, y) => {
+    const stones = () => ({ dark: new Path2D(), light: new Path2D() });
+    out.ringStones = stones();
+    out.bedStones = stones();
+    const stone = (group, x, y) => {
       const size = 0.07 + rand() * 0.13,
-        path = rand() < 0.55 ? out.stonesDark : out.stonesLight;
+        path = rand() < 0.55 ? group.dark : group.light;
       path.moveTo(x + size, y);
       path.arc(x, y, size, 0, 2 * Math.PI);
     };
     const scatter = (x, y, w, h) => {
-      for (let i = 0; i < w * h * 3; i++) stone(x + rand() * w, y + rand() * h);
+      for (let i = 0; i < w * h * 3; i++) stone(out.bedStones, x + rand() * w, y + rand() * h);
     };
     const area = (Math.PI / 2) * (R.gravelOut ** 2 - R.wallOut ** 2);
     for (let i = 0; i < area * 3; i++) {
       const t = Math.PI + rand() * Math.PI,
         r = Math.sqrt(R.wallOut ** 2 + rand() * (R.gravelOut ** 2 - R.wallOut ** 2));
-      stone(axis + r * Math.cos(t), arcY + r * Math.sin(t));
+      stone(out.ringStones, axis + r * Math.cos(t), arcY + r * Math.sin(t));
     }
 
     // Walls: the curved one and the two straight ones.
@@ -753,9 +755,10 @@ const MapView = (() => {
       ctx.lineWidth = Math.max(px, 0.1);
       ctx.stroke(S.wheelStops);
 
-      // Hedges and benches beside the walkway
+      // Gravel beds beside the walkway, with the shrubs on them
       ctx.fillStyle = C.gravel;
       ctx.fill(S.hedgeRock);
+      if (scale > 3) this.drawStones(S.bedStones);
       ctx.fillStyle = C.hedge;
       ctx.fill(S.hedges);
       ctx.fillStyle = C.hedgeTop;
@@ -770,10 +773,10 @@ const MapView = (() => {
       ctx.fillStyle = C.gravel;
       ctx.fill(S.gravel);
       if (scale > 3) {
-        ctx.fillStyle = C.gravelDark;
-        ctx.fill(S.stonesDark);
-        ctx.fillStyle = C.gravelLight;
-        ctx.fill(S.stonesLight);
+        ctx.save();
+        ctx.clip(S.gravel); // so no stone pokes out over the path
+        this.drawStones(S.ringStones);
+        ctx.restore();
       }
       ctx.fillStyle = C.bench;
       ctx.fill(S.benches);
@@ -861,6 +864,14 @@ const MapView = (() => {
         this.zoomedOut = zoomedOut;
         this.cb.onZoomedOut?.(zoomedOut);
       }
+    }
+
+    drawStones({ dark, light }) {
+      const { ctx } = this;
+      ctx.fillStyle = C.gravelDark;
+      ctx.fill(dark);
+      ctx.fillStyle = C.gravelLight;
+      ctx.fill(light);
     }
 
     // Engraved bricks are a little lighter than the rest of the field (the gray
