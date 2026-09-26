@@ -18,8 +18,12 @@ const App = (() => {
     about: $("#about"),
     toast: $("#toast"),
   };
-  const compact = matchMedia("(max-width: 899px)");
-  const sideways = matchMedia("(max-width: 899px) and (orientation: landscape)");
+  // Phones, as in the stylesheet: narrower than a tablet, or turned sideways
+  // (the biggest iPhones are over 900px wide sideways, but never 500px tall).
+  const compact = matchMedia("(max-width: 899px), (orientation: landscape) and (max-height: 500px)");
+  const sideways = matchMedia(
+    "(orientation: landscape) and (max-width: 899px), (orientation: landscape) and (max-height: 500px)",
+  );
   const hover = matchMedia("(hover: hover)");
   const TITLE = document.title;
   // iPhones, iPads and Macs get the share icon their owners know.
@@ -242,7 +246,16 @@ const App = (() => {
 
   function setSearching(on) {
     document.body.classList.toggle("is-searching", on);
+    // On a phone the name list scrolls the page, so the map comes back to a
+    // page at the top.
+    if (!on) scrollTo(0, 0);
     layoutChanged();
+  }
+
+  // New letters in the box show the best matches, from the top of the list.
+  function listToTop() {
+    el.results.scrollTop = 0;
+    if (compact.matches) scrollTo(0, 0);
   }
 
   // ---- selection ----------------------------------------------------------
@@ -390,6 +403,15 @@ const App = (() => {
     if (state.cardFolded === on) return;
     state.cardFolded = on;
     renderCard();
+    // Opened back up, the card covers more of the map than before.
+    if (!on) keepBrickInSight();
+  }
+
+  // Pans the map (only if needed) so the open brick isn't off screen or
+  // under the card. With the whole plaza showing, it's already in sight.
+  function keepBrickInSight() {
+    const b = selected();
+    if (b?.slot && !state.editor && !map.isFit) map.reveal(b.slot);
   }
 
   // On an upright phone the card can also be swiped down to fold it and up to
@@ -454,8 +476,9 @@ const App = (() => {
       bottom = open && !side ? el.card.offsetHeight + 12 : 0,
       left = side && !el.card.classList.contains("is-folded") ? el.card.offsetWidth + 12 : 0;
     el.mapWrap.style.setProperty("--sheet", `${bottom}px`);
-    if (compact.matches) {
-      // On phones the map sits under the search bar (and the editor bar, if open).
+    if (compact.matches && !sideways.matches) {
+      // Upright, the map sits under the search bar (and the editor bar, if
+      // open). Sideways it runs to the top, beside the panel.
       const top = el.search.closest(".search").getBoundingClientRect().bottom - el.side.getBoundingClientRect().top;
       el.mapWrap.style.top = `${Math.round(top)}px`;
     } else el.mapWrap.style.top = "";
@@ -505,6 +528,8 @@ const App = (() => {
     onKey: (e) => !!state.editor?.onMapKey(e),
     // Looking around the map folds a phone's brick card out of the way.
     onUserMove: () => foldForMap(),
+    // Turning the phone changes what fits, so the open brick is looked for.
+    onResize: () => keepBrickInSight(),
     // "Show the whole plaza" only appears once it would do something, and
     // zoom out rests while the whole plaza is already showing.
     onZoomedOut(out) {
@@ -582,6 +607,7 @@ const App = (() => {
     el.search.addEventListener("input", () => {
       setSearching(true);
       setQuery(el.search.value);
+      listToTop();
     });
     el.search.addEventListener("focus", () => setSearching(true));
     el.search.addEventListener("keydown", (e) => {
@@ -608,6 +634,7 @@ const App = (() => {
     });
     el.clear.addEventListener("click", () => {
       setQuery("");
+      listToTop();
       el.search.focus();
     });
     // Scrolling the list puts the keyboard away, so more names show.
@@ -623,13 +650,15 @@ const App = (() => {
       if (btn) state.editor?.onResultClick(Number(btn.dataset.id)) || select(Number(btn.dataset.id));
     });
 
+    // With a brick open, the buttons zoom in on it.
+    const zoomOn = () => (!state.editor && selected()?.slot) || null;
     $("#zoom-in").addEventListener("click", () => {
       foldForMap();
-      map.zoomBy(1.7);
+      map.zoomBy(1.7, zoomOn());
     });
     $("#zoom-out").addEventListener("click", () => {
       foldForMap();
-      map.zoomBy(1 / 1.7);
+      map.zoomBy(1 / 1.7, zoomOn());
     });
     $("#zoom-fit").addEventListener("click", () => map.fit());
     $("#rotate").addEventListener("click", () => map.rotate());

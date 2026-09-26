@@ -1125,9 +1125,17 @@ select {
 
 /* ---- phones and small tablets ------------------------------------------------ */
 
-@media (max-width: 899px) {
+/* Anything narrower than a tablet, and any phone turned sideways. The
+   biggest iPhones are over 900px wide sideways, but never 500px tall. */
+@media (max-width: 899px), (orientation: landscape) and (max-height: 500px) {
   :root {
     --topbar-h: 54px;
+    /* What stays pinned above the name list: the search box, then the bar
+       with the count and Back to map. */
+    --search-h: 73px;
+    --bar-h: 54px;
+    --bar-top: calc(var(--topbar-h) + env(safe-area-inset-top) + var(--search-h));
+    --list-top: calc(var(--bar-top) + var(--bar-h));
   }
 
   .brand-emblem {
@@ -1166,28 +1174,45 @@ select {
     position: relative;
   }
 
-  /* The name list fills everything under the search box, down to the
-     bottom of the page. White, like the strip Safari puts around its
-     toolbar underneath. */
+  /* The name list covers the map. It scrolls the page itself, not a box in
+     the page, because Safari only tucks its bars away when the page scrolls
+     (sideways they go away completely). The search box and the bar with
+     Back to map stay pinned at the top as the names go by. */
+  body.is-searching {
+    height: auto;
+    overflow: visible;
+    background: #fff;
+  }
+
+  .is-searching .side {
+    position: relative;
+    inset: auto;
+  }
+
+  .is-searching .search {
+    position: sticky;
+    top: calc(var(--topbar-h) + env(safe-area-inset-top));
+    z-index: 3;
+  }
+
+  .is-searching .map-wrap,
+  .is-searching .card {
+    display: none;
+  }
+
   .results-panel {
     display: none;
-    position: absolute;
-    inset: 0;
-    padding-top: 6px;
     background: #fff;
     pointer-events: auto;
   }
 
-  .results-group {
-    background: linear-gradient(#fff 75%, rgb(255 255 255 / 0));
-  }
-
   .is-searching .results-panel {
-    display: flex;
+    display: block;
   }
 
-  .is-searching .card {
-    display: none;
+  .results-group {
+    top: var(--list-top);
+    background: linear-gradient(#fff 75%, rgb(255 255 255 / 0));
   }
 
   .results-head {
@@ -1195,7 +1220,12 @@ select {
   }
 
   .results-bar {
-    margin-bottom: 8px;
+    position: sticky;
+    top: var(--bar-top);
+    z-index: 2;
+    height: var(--bar-h);
+    padding: 6px 0 8px;
+    background: #fff;
   }
 
   .results-close {
@@ -1205,6 +1235,12 @@ select {
 
   .results {
     padding: 0 6px calc(12px + env(safe-area-inset-bottom));
+    overflow: visible;
+  }
+
+  /* Arrow keys bring a name into view below the pinned rows. */
+  .result {
+    scroll-margin-top: calc(var(--list-top) + 36px);
   }
 
   .card {
@@ -1278,46 +1314,89 @@ select {
   }
 }
 
-/* Phones turned sideways: the card runs down the left side instead of along
-   the bottom, so the map keeps its height. */
-@media (max-width: 899px) and (orientation: landscape) {
+/* Phones turned sideways, where height is scarce: no title bar, so the map
+   gets the full height. The search box tops a panel down the left side,
+   with the card under it, and About floats over the corner of the map. */
+@media (orientation: landscape) and (max-width: 899px), (orientation: landscape) and (max-height: 500px) {
   :root {
-    --topbar-h: 56px;
+    --topbar-h: 0px;
+    --panel-w: min(290px, 40vw);
+    --search-row: 60px;
+    --bar-top: 0px;
+    --list-top: var(--search-row);
   }
 
-  /* The search box moves up into the title bar, between the emblem and
-     About, so the map gets that height back. */
-  .brand-text {
+  /* Safari colors its bars from the page. With no title bar at the top,
+     that's the page background, which nothing else shows. */
+  body {
+    background: var(--navy-800);
+  }
+
+  .topbar {
+    left: auto;
+    top: 10px;
+    right: max(12px, env(safe-area-inset-right));
+    height: auto;
+    padding: 0;
+    background: none;
+    border: 0;
+  }
+
+  .brand {
     display: none;
+  }
+
+  .topbar-btn,
+  .topbar-btn:hover {
+    height: 40px;
+    padding: 0 16px;
+    border: 0;
+    background: #fff;
+    color: var(--navy-800);
+    font-size: 15px;
+    box-shadow: var(--shadow);
   }
 
   .side {
     z-index: 6;
   }
 
+  /* Sits on top of the card (or the name list), which leaves room for it. */
   .search {
     position: absolute;
-    top: calc(-1 * var(--topbar-h));
-    left: calc(max(14px, env(safe-area-inset-left)) + 48px);
-    right: calc(max(16px, env(safe-area-inset-right)) + 88px);
-    padding: 6px 0;
+    top: 0;
+    left: 0;
+    z-index: 1;
+    width: var(--panel-w);
+    height: var(--search-row);
+    padding: 8px 14px 8px max(14px, env(safe-area-inset-left));
     background: none;
     border: 0;
   }
 
   #search {
     height: 44px;
-    border-color: transparent;
+  }
+
+  /* Over the name list, it stays put in the corner as the names scroll by. */
+  .is-searching .search {
+    position: fixed;
+    background: #fff;
+  }
+
+  .map-wrap {
+    top: 0;
   }
 
   .card {
     top: 0;
     right: auto;
-    width: min(290px, 40vw);
+    width: var(--panel-w);
     max-height: none;
-    padding: 10px 16px max(12px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    padding: calc(var(--search-row) + 2px) 16px max(12px, env(safe-area-inset-bottom))
+      max(16px, env(safe-area-inset-left));
     border-radius: 0 20px 0 0;
-    border-width: 1px 1px 0 0;
+    border-width: 0 1px 0 0;
     box-shadow: 10px 0 30px rgb(14 26 45 / 0.18);
   }
 
@@ -1326,18 +1405,16 @@ select {
     display: none;
   }
 
-  /* Folded, it's just the name in the top corner, over the lawn, with an
-     arrow that opens it back down. */
+  /* Folded, it's the search box and the name, over the lawn in the top
+     corner, with an arrow that opens it back down. */
   .card-open .icon {
     rotate: 180deg;
   }
 
   .card.is-folded {
     bottom: auto;
-    width: auto;
-    max-width: min(270px, 42vw);
     padding-bottom: 10px;
-    border-radius: 0 0 20px 0;
+    border-radius: 0 20px 20px 0;
     border-width: 0 1px 1px 0;
   }
 
@@ -1370,11 +1447,19 @@ select {
     font-size: 16px;
   }
 
-  /* The name list keeps clear of the notch and fills the width in two
-     columns, so twice as many names show at once. */
+  /* The name list covers the map. Its count and Back to map sit beside the
+     search box, and the names fill the width in two columns, clear of the
+     notch, so twice as many show at once. */
   .results-panel {
+    padding-top: 0;
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
+  }
+
+  .results-bar {
+    height: var(--search-row);
+    margin: 0 0 4px;
+    padding: 0 0 0 calc(var(--panel-w) - env(safe-area-inset-left));
   }
 
   .results {
@@ -1391,7 +1476,7 @@ select {
 }
 
 /* Short phones (like the iPhone SE): a smaller brick leaves the map more room. */
-@media (max-width: 899px) and (max-height: 740px) {
+@media (max-width: 899px) and (max-height: 740px), (orientation: landscape) and (max-height: 500px) {
   .card .replica {
     max-width: 260px;
   }
@@ -1472,10 +1557,6 @@ select {
    whole screen. iOS can still report 100dvh short by the status bar's height
    (seen after a reload sideways), which leaves a white strip under the map. */
 @media (display-mode: standalone) {
-  html {
-    overflow: hidden;
-  }
-
   body {
     height: 100lvh;
   }
@@ -1773,7 +1854,7 @@ select {
   color: var(--gold-400);
 }
 
-@media (max-width: 899px) {
+@media (max-width: 899px), (orientation: landscape) and (max-height: 500px) {
   .is-editing .card {
     max-height: 55%;
   }

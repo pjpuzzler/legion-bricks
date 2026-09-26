@@ -630,8 +630,15 @@ const MapView = (() => {
       }
     }
 
-    zoomBy(factor) {
-      const [x, y] = this.focusPoint();
+    // Zooms on the middle of the map, or on a brick when it's in sight, so
+    // the brick stays put while everything grows around it.
+    zoomBy(factor, slot = null) {
+      let [x, y] = this.focusPoint();
+      if (slot) {
+        const [sx, sy] = this.worldToScreen(slot.x + slot.w / 2, slot.y + slot.h / 2),
+          i = this.insets;
+        if (sx > i.left && sx < this.size.w - i.right && sy > i.top && sy < this.size.h - i.bottom) [x, y] = [sx, sy];
+      }
       this.zoomAt(x, y, factor, true);
     }
 
@@ -716,6 +723,7 @@ const MapView = (() => {
       if (first || this.isFit) Object.assign(this.view, this.fitView());
       else this.clampView();
       this.render();
+      if (!first) this.cb.onResize?.();
     }
 
     worldTransform() {
