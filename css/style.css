@@ -53,7 +53,9 @@ html {
 body {
   margin: 0;
   display: grid;
-  grid-template-rows: var(--topbar-h) minmax(0, 1fr);
+  /* safe-area-inset-top is 0 in Safari. Opened from the Home Screen, the
+     page runs up behind the clock and the header grows to cover it. */
+  grid-template-rows: calc(var(--topbar-h) + env(safe-area-inset-top)) minmax(0, 1fr);
   grid-template-columns: minmax(0, 1fr); /* never wider than the screen */
   height: 100dvh;
   overflow: hidden;
@@ -98,15 +100,17 @@ select {
   top: 0;
   left: 0;
   right: 0;
-  height: var(--topbar-h);
+  height: calc(var(--topbar-h) + env(safe-area-inset-top));
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 0 16px 0 14px;
+  padding: env(safe-area-inset-top) 16px 0 14px;
   padding-left: max(14px, env(safe-area-inset-left));
   padding-right: max(16px, env(safe-area-inset-right));
-  background: linear-gradient(180deg, var(--navy-700), var(--navy-800));
+  /* One solid color: Safari copies it into the strip behind the time and
+     battery, and a gradient would leave a visible seam. */
+  background: var(--navy-800);
   color: #fff;
   border-bottom: 3px solid var(--gold-500);
   z-index: 5;
@@ -848,7 +852,7 @@ select {
 .about {
   width: min(480px, calc(100vw - 28px));
   max-height: calc(100vh - 32px);
-  max-height: calc(100dvh - 32px);
+  max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   overflow-y: auto;
   padding: 20px 20px 18px;
   border: 0;
@@ -1060,7 +1064,7 @@ select {
 
 @media (max-height: 560px) and (min-width: 560px) {
   .about {
-    width: min(780px, calc(100vw - 28px));
+    width: min(780px, calc(100vw - 2 * max(14px, env(safe-area-inset-left), env(safe-area-inset-right))));
   }
 
   .about[open] {
@@ -1200,7 +1204,7 @@ select {
   }
 
   .results {
-    padding: 0 6px 12px;
+    padding: 0 6px calc(12px + env(safe-area-inset-bottom));
   }
 
   .card {
@@ -1311,7 +1315,7 @@ select {
     right: auto;
     width: min(290px, 40vw);
     max-height: none;
-    padding: 10px 16px 12px max(16px, env(safe-area-inset-left));
+    padding: 10px 16px max(12px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
     border-radius: 0 20px 0 0;
     border-width: 1px 1px 0 0;
     box-shadow: 10px 0 30px rgb(14 26 45 / 0.18);
@@ -1345,8 +1349,44 @@ select {
   /* A column down the right edge, beside the plaza. */
   .map-controls {
     right: max(12px, env(safe-area-inset-right));
-    bottom: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom));
     grid-auto-flow: row;
+  }
+
+  /* Safari's bars leave little height, so the welcome is tighter. */
+  .intro-title {
+    margin: 2px 0;
+    font-size: 20px;
+    line-height: 1.25;
+  }
+
+  .intro-text {
+    margin-bottom: 12px;
+    font-size: 15px;
+  }
+
+  .card .btn-big {
+    height: 48px;
+    font-size: 16px;
+  }
+
+  /* The name list keeps clear of the notch and fills the width in two
+     columns, so twice as many names show at once. */
+  .results-panel {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
+  .results {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-content: start;
+    column-gap: 8px;
+  }
+
+  .results-group,
+  .results-empty {
+    grid-column: 1 / -1;
   }
 }
 
@@ -1425,6 +1465,19 @@ select {
     grid-column: 1 / -1;
     grid-row: 2;
     height: 7px;
+  }
+}
+
+/* Opened from the Home Screen there are no browser bars, so the page is the
+   whole screen. iOS can still report 100dvh short by the status bar's height
+   (seen after a reload sideways), which leaves a white strip under the map. */
+@media (display-mode: standalone) {
+  html {
+    overflow: hidden;
+  }
+
+  body {
+    height: 100lvh;
   }
 }
 

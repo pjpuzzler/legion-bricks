@@ -425,7 +425,8 @@ const App = (() => {
           class: "btn btn-primary btn-big",
           onclick: () => {
             setSearching(true);
-            el.search.focus();
+            // A phone's keyboard would cover the names they asked to see.
+            if (hover.matches) el.search.focus();
           },
         },
         `See all ${state.bricks.length} names`,
@@ -609,6 +610,14 @@ const App = (() => {
       setQuery("");
       el.search.focus();
     });
+    // Scrolling the list puts the keyboard away, so more names show.
+    el.results.addEventListener(
+      "touchmove",
+      () => {
+        if (document.activeElement === el.search) el.search.blur();
+      },
+      { passive: true },
+    );
     el.results.addEventListener("click", (e) => {
       const btn = e.target.closest(".result");
       if (btn) state.editor?.onResultClick(Number(btn.dataset.id)) || select(Number(btn.dataset.id));
