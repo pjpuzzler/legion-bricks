@@ -27,6 +27,12 @@
     <!-- Opened from the Home Screen: full screen, header running up behind the clock. -->
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="manifest" href="manifest.webmanifest" />
+    <!-- Marks Safari (not Chrome and the rest) before anything is drawn. The
+         page background depends on it sideways (see style.css). -->
+    <script>
+      if (/Version\/[\d.]+ .*Safari\//.test(navigator.userAgent) && !/CriOS|FxiOS|EdgiOS|OPiOS|DuckDuckGo/.test(navigator.userAgent))
+        document.documentElement.classList.add("is-safari");
+    </script>
     <link rel="stylesheet" href="css/style.css" />
   </head>
   <body>

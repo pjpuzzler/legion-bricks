@@ -1429,17 +1429,17 @@ select {
     --list-top: var(--search-row);
   }
 
-  /* Safari colors its bars from the page. With no title bar at the top,
-     that's the page background, which nothing else shows. */
+  /* The page background. Other browsers on an iPhone (Chrome) keep the page
+     out of the space beside the notch and fill that space with it, so it's
+     the lawn's green, to run into the map. Safari lets the page into that
+     space, and colors its bars from the page background instead (with no
+     title bar at the top), so there it's navy. */
   body {
-    background: var(--navy-800);
+    background: #97a95b;
   }
 
-  /* Browsers that keep the page out of the space beside the notch (Chrome on
-     an iPhone) fill that space with the page background. There it's the
-     lawn's green, so it runs into the map (see markLetterbox in app.js). */
-  :root.is-letterboxed body:not(.is-searching) {
-    background: #97a95b;
+  :root.is-safari body:not(.is-searching) {
+    background: var(--navy-800);
   }
 
   .topbar {
