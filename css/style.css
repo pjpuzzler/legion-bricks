@@ -53,6 +53,13 @@ body {
   touch-action: manipulation;
 }
 
+/* The page doesn't stretch past its ends (on an iPhone it would pull away
+   and show what's behind it, around the parts pinned in place). */
+html,
+body {
+  overscroll-behavior: none;
+}
+
 body {
   margin: 0;
   display: grid;
@@ -1286,25 +1293,6 @@ select {
     overflow: visible;
   }
 
-  /* Once Safari's bars are away, the list scrolls on its own over the page,
-     so scrolling back up doesn't bring them back (see listScrollsItself in
-     app.js). */
-  body.list-scrolls .results {
-    position: fixed;
-    top: var(--list-top);
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 1;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    background: #fff;
-  }
-
-  body.list-scrolls .results-group {
-    top: 0;
-  }
-
   /* Arrow keys bring a name into view below the pinned rows. */
   .result {
     scroll-margin-top: calc(var(--list-top) + 36px);
@@ -1459,9 +1447,13 @@ select {
     height: 44px;
   }
 
-  /* Over the name list, it stays put in the corner as the names scroll by. */
+  /* Over the name list it's pinned in the corner as the names scroll by,
+     like the rows above the list upright, and moves with the page when
+     Safari shifts it for the keyboard. */
   .is-searching .search {
-    position: fixed;
+    position: sticky;
+    top: 0;
+    z-index: 3;
     background: #fff;
   }
 
@@ -1507,29 +1499,9 @@ select {
     margin-top: 7px;
   }
 
-  /* The welcome, sideways: the button to every name in the bottom corner, so
-     the search box has the top corner to itself. */
+  /* The welcome, sideways: the button to every name under the search box. */
   .card.is-intro {
-    top: auto;
-    bottom: max(12px, env(safe-area-inset-bottom));
-    left: max(12px, env(safe-area-inset-left));
-    width: auto;
-    padding: 0;
-    border: 0;
-    border-radius: 999px;
-    background: none;
-    box-shadow: none;
-    overflow: visible;
-  }
-
-  .card.is-intro .btn-big {
-    width: auto;
-    box-shadow: var(--shadow);
-  }
-
-  /* On its own over the map, the search box stands out a little more. */
-  body:not(.has-brick) #search {
-    box-shadow: var(--shadow);
+    padding: calc(var(--search-row) + 2px) 16px 14px max(16px, env(safe-area-inset-left));
   }
 
   /* A column down the right edge, beside the plaza. */
@@ -1554,15 +1526,11 @@ select {
     padding-right: env(safe-area-inset-right);
   }
 
+  /* In the search box's row, beside it. */
   .results-bar {
     height: var(--search-row);
-    margin: 0 0 4px;
-    padding: 0 0 0 calc(var(--panel-w) - env(safe-area-inset-left));
-  }
-
-  body.list-scrolls .results {
-    left: env(safe-area-inset-left);
-    right: env(safe-area-inset-right);
+    margin: calc(-1 * var(--search-row)) 0 4px calc(var(--panel-w) - env(safe-area-inset-left));
+    padding: 0;
   }
 
   .results {

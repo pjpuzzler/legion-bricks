@@ -8,7 +8,6 @@ const App = (() => {
     search: $("#search"),
     clear: $("#search-clear"),
     results: $("#results"),
-    resultsPanel: $(".results-panel"),
     resultsHead: $("#results-head"),
     card: $("#card"),
     side: $("#side"),
@@ -249,7 +248,6 @@ const App = (() => {
 
   function setSearching(on) {
     sheetCancel();
-    listScrollsPage();
     document.body.classList.toggle("is-searching", on);
     // On a phone the name list scrolls the page, so the map comes back to a
     // page at the top.
@@ -260,40 +258,7 @@ const App = (() => {
   // New letters in the box show the best matches, from the top of the list.
   function listToTop() {
     el.results.scrollTop = 0;
-    if (compact.matches && !listOwnScroll) scrollTo(0, 0);
-  }
-
-  // On a phone the name list first scrolls the page itself, because that's
-  // what makes Safari tuck its bars away. Once they're away, the list takes
-  // over its own scrolling, so scrolling back up it doesn't bring them back.
-  // The switch is made as a finger touches the list, before it moves.
-  let listOwnScroll = false;
-  const tallProbe = document.createElement("div");
-  tallProbe.style.cssText = "position:fixed;top:0;left:0;width:0;height:100lvh;visibility:hidden;pointer-events:none";
-  document.body.append(tallProbe);
-  const barsAway = () => innerHeight >= tallProbe.getBoundingClientRect().height - 2;
-
-  function listScrollsItself() {
-    if (listOwnScroll) return;
-    const before = el.results.getBoundingClientRect().top;
-    // The page stays as tall as it was, so it doesn't jump.
-    el.resultsPanel.style.minHeight = `${el.resultsPanel.offsetHeight}px`;
-    document.body.classList.add("list-scrolls");
-    listOwnScroll = true;
-    // The names stay just where they were.
-    el.results.scrollTop = el.results.getBoundingClientRect().top - before;
-  }
-
-  // Back to the page scrolling, with the names where they were (`keep`), or
-  // reset when the list closes.
-  function listScrollsPage(keep = false) {
-    if (!listOwnScroll) return;
-    const inner = el.results.scrollTop,
-      before = el.results.getBoundingClientRect().top;
-    document.body.classList.remove("list-scrolls");
-    el.resultsPanel.style.minHeight = "";
-    listOwnScroll = false;
-    if (keep) scrollBy(0, el.results.getBoundingClientRect().top - before + inner);
+    if (compact.matches) scrollTo(0, 0);
   }
 
   // ---- selection ----------------------------------------------------------
@@ -779,12 +744,27 @@ const App = (() => {
   // ---- wiring -------------------------------------------------------------
 
   function bindUI() {
+    // Sideways, the keyboard and Safari's bars leave only a sliver of the
+    // page, so Safari scrolls the page to keep the search box in sight, and
+    // later won't let it be scrolled back. So as the keyboard goes, the names
+    // are put back where they were (or at the top, after typing). While it's
+    // up, the list waits to go back to the top, rather than fight Safari.
+    const kb = { at: 0, typed: false, byHand: false };
+    const cramped = () => sideways.matches && document.activeElement === el.search;
     el.search.addEventListener("input", () => {
+      kb.typed = true;
       setSearching(true);
       setQuery(el.search.value);
-      listToTop();
+      if (cramped()) el.results.scrollTop = 0;
+      else listToTop();
     });
-    el.search.addEventListener("focus", () => setSearching(true));
+    el.search.addEventListener("focus", () => {
+      Object.assign(kb, { at: scrollY, typed: false, byHand: false });
+      setSearching(true);
+    });
+    el.search.addEventListener("blur", () => {
+      if (sideways.matches && !kb.byHand && document.body.classList.contains("is-searching")) scrollTo(0, kb.typed ? 0 : kb.at);
+    });
     el.search.addEventListener("keydown", (e) => {
       if (e.key === "ArrowDown") moveActive(1);
       else if (e.key === "ArrowUp") moveActive(-1);
@@ -816,18 +796,9 @@ const App = (() => {
     el.results.addEventListener(
       "touchmove",
       () => {
-        if (document.activeElement === el.search) el.search.blur();
-      },
-      { passive: true },
-    );
-    // As a finger lands on the list: with Safari's bars away the list scrolls
-    // itself, and with them showing the page scrolls, which tucks them away.
-    el.results.addEventListener(
-      "touchstart",
-      () => {
-        if (!compact.matches || !document.body.classList.contains("is-searching")) return;
-        if (barsAway()) listScrollsItself();
-        else listScrollsPage(true);
+        if (document.activeElement !== el.search) return;
+        kb.byHand = true; // the list is theirs to scroll, so it stays put
+        el.search.blur();
       },
       { passive: true },
     );
@@ -869,8 +840,9 @@ const App = (() => {
 
   // A quick second tap in the same spot zooms the page on an iPhone. The
   // stylesheet stops that on buttons and the map, but Safari still zooms on
-  // plain text and backgrounds, so the second tap is stopped here. The zoom
-  // buttons are left alone so they can be tapped fast.
+  // plain text and backgrounds, so the second tap is stopped there. Buttons
+  // and links are left alone, so they can be tapped quickly (like the zoom
+  // buttons, or a name right after a tap to stop the list scrolling).
   function stopDoubleTapZoom() {
     let start = null,
       last = null;
@@ -891,7 +863,7 @@ const App = (() => {
         if (!near(start, 10)) return (last = null); // a swipe, not a tap
         const again = last && e.timeStamp - last.time < 400 && near(last, 40);
         last = again ? null : { time: e.timeStamp, x: t.clientX, y: t.clientY };
-        if (again && !e.target.closest?.("input, textarea, select, canvas, .map-btn")) e.preventDefault();
+        if (again && !e.target.closest?.("input, textarea, select, canvas, button, a")) e.preventDefault();
       },
       { passive: false },
     );
