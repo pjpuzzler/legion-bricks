@@ -607,12 +607,6 @@ select {
   height: 20px;
 }
 
-.btn-big {
-  height: 54px;
-  padding: 0 24px;
-  font-size: 17px;
-}
-
 .btn-primary {
   background: var(--navy-800);
   border-color: var(--navy-800);
@@ -995,7 +989,7 @@ select {
 
 .bars li {
   display: grid;
-  grid-template-columns: 138px minmax(0, 1fr) 34px;
+  grid-template-columns: 158px minmax(0, 1fr) 34px;
   align-items: center;
   gap: 10px;
   min-height: 22px;
@@ -1015,6 +1009,50 @@ select {
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, var(--navy-600), var(--navy-800));
+}
+
+/* By branch: each emblem beside its name, and each bar in the branch's own
+   colour (the ones it's known by, as on its flags). */
+.bars-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.bars-emblem {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  object-fit: contain;
+}
+
+[data-branch="army"] .bars-fill {
+  background: #4b5320; /* olive drab */
+}
+
+[data-branch="navy"] .bars-fill {
+  background: #1c2d5a; /* navy blue */
+}
+
+[data-branch="air-force"] .bars-fill {
+  background: #2b58c7; /* the blue of its flag */
+}
+
+[data-branch="marines"] .bars-fill {
+  background: #b31b34; /* scarlet */
+}
+
+[data-branch="army-air-corps"] .bars-fill {
+  background: #d9962b; /* golden orange */
+}
+
+[data-branch="coast-guard"] .bars-fill {
+  background: #e0552e; /* its red-orange stripe */
+}
+
+[data-branch="army-nurse-corps"] .bars-fill {
+  background: #7b2a48; /* maroon */
 }
 
 .bars-n {
@@ -1086,6 +1124,11 @@ select {
     grid-template-columns: 122px minmax(0, 1fr) 30px;
     min-height: 20px;
     font-size: 14px;
+  }
+
+  /* No room for the emblems beside the names (the colours stay). */
+  .bars-emblem {
+    display: none;
   }
 }
 
@@ -1316,15 +1359,6 @@ select {
     padding-bottom: calc(10px + env(safe-area-inset-bottom));
   }
 
-  /* The welcome: just the button to every name, across the card. */
-  .card.is-intro {
-    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
-  }
-
-  .card.is-intro .btn-big {
-    width: 100%;
-  }
-
   .brick-card {
     gap: 6px;
   }
@@ -1372,7 +1406,7 @@ select {
   /* In a row, so they sit over the parking lot rather than the plaza's end. */
   .map-controls {
     right: 12px;
-    bottom: calc(14px + var(--sheet, 0px));
+    bottom: max(calc(14px + var(--sheet, 0px)), calc(8px + env(safe-area-inset-bottom)));
     grid-auto-flow: column;
     gap: 6px;
   }
@@ -1499,9 +1533,9 @@ select {
     margin-top: 7px;
   }
 
-  /* The welcome, sideways: the button to every name under the search box. */
-  .card.is-intro {
-    padding: calc(var(--search-row) + 2px) 16px 14px max(16px, env(safe-area-inset-left));
+  /* With no brick open, the search box floats over the map on its own. */
+  body:not(.has-brick):not(.is-searching) #search {
+    box-shadow: var(--shadow);
   }
 
   /* A column down the right edge, beside the plaza. */
@@ -1509,12 +1543,6 @@ select {
     right: max(12px, env(safe-area-inset-right));
     bottom: max(12px, env(safe-area-inset-bottom));
     grid-auto-flow: row;
-  }
-
-  /* Safari's bars leave little height. */
-  .card .btn-big {
-    height: 48px;
-    font-size: 16px;
   }
 
   /* The name list covers the map. Its count and Back to map sit beside the

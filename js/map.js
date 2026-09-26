@@ -381,7 +381,8 @@ const MapView = (() => {
     }
 
     // Past each pad: a gravel bed with a stone bench in it, then a row of shrubs,
-    // each trimmed into its own block, running off along the lot.
+    // each trimmed into its own block, along the lot (six on the left, where
+    // the gravel stops too, and running off on the right).
     out.hedges = new Path2D();
     out.hedgeTops = new Path2D();
     out.hedgeRock = new Path2D();
@@ -391,18 +392,19 @@ const MapView = (() => {
       depth = hedgeBottom - hedgeTop,
       rockTop = hedgeTop - 1.6,
       { length, gap } = S.shrubs;
-    for (const [pad, dir] of [
-      [Plan.pads[0], -1],
-      [Plan.pads[1], 1],
+    for (const [pad, dir, count] of [
+      [Plan.pads[0], -1, S.shrubs.left],
+      [Plan.pads[1], 1, Infinity],
     ]) {
       const edge = dir < 0 ? pad.left : pad.right,
         start = edge + dir * S.benchGap,
-        far = start + dir * 400,
+        run = Math.min(400, count * (length + gap)),
+        far = start + dir * run,
         [g0, g1] = [Math.min(edge, far), Math.max(edge, far)];
       out.hedgeRock.rect(g0, rockTop, g1 - g0, hedgeBottom - rockTop);
       scatter(Math.min(edge, start), rockTop, S.benchGap, hedgeBottom - rockTop); // by the bench
-      scatter(dir < 0 ? start - 60 : start, rockTop, 60, hedgeTop - rockTop); // along the shrubs
-      for (let i = 0; i * (length + gap) < 400; i++) {
+      scatter(dir < 0 ? start - Math.min(60, run) : start, rockTop, Math.min(60, run), hedgeTop - rockTop); // along the shrubs
+      for (let i = 0; i * (length + gap) < run; i++) {
         const near = start + dir * i * (length + gap),
           x = dir < 0 ? near - length : near;
         scatter(dir < 0 ? x - gap : x + length, hedgeTop, gap, depth); // between two shrubs
@@ -521,16 +523,27 @@ const MapView = (() => {
       return [(i.left + w - i.right) / 2, (i.top + h - i.bottom) / 2];
     }
 
+    // How far out the whole-plaza view is: the frame fits the free part of
+    // the screen, and it zooms out a little more if need be (at most 15%) so
+    // the bricks sit right in the middle, with the flags still in view above
+    // them. Not on a phone turned sideways, where every bit of height counts.
     fitScale(angle = this.view.angle) {
-      const b = Plan.frame,
+      const f = Plan.frame,
+        [cx, cy] = Plan.centre,
         c = Math.abs(Math.cos(angle)),
         s = Math.abs(Math.sin(angle)),
-        bw = b.right - b.left,
-        bh = b.bottom - b.top,
         i = this.insets,
         aw = Math.max(60, this.size.w - i.left - i.right),
-        ah = Math.max(60, this.size.h - i.top - i.bottom);
-      return Math.min(aw / (bw * c + bh * s), ah / (bw * s + bh * c));
+        ah = Math.max(60, this.size.h - i.top - i.bottom),
+        across = (w, h) => aw / (w * c + h * s),
+        down = (w, h) => ah / (w * s + h * c),
+        w = f.right - f.left,
+        h = f.bottom - f.top,
+        tight = Math.min(across(w, h), down(w, h));
+      if (ah < 480) return tight;
+      const ew = 2 * Math.max(cx - f.left, f.right - cx),
+        eh = 2 * Math.max(cy - f.top, f.bottom - cy);
+      return Math.max(Math.min(across(ew, eh), down(ew, eh)), tight * 0.85);
     }
 
     // Half of what the free part of the screen shows at `v`, across and down

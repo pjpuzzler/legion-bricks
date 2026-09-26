@@ -37,7 +37,10 @@ const Plan = (() => {
       [180, "navy"],
     ],
     benchGap: 7, // gravel between each pad and the first shrub, where the bench sits
-    shrubs: { length: 15, gap: 1 }, // the shrubs along the lot are trimmed into separate blocks
+    // The shrubs along the lot are trimmed into separate blocks. On the left
+    // there are six, and past them the gravel stops too and it's just grass.
+    // On the right they run on.
+    shrubs: { length: 15, gap: 1, left: 6 },
     // Angled parking: distance between stripes along the curb, stall depth, how
     // far each stripe leans (sideways units per unit down), and how many spaces
     // in front of the memorial have wheel stops. The last of those ends at the
@@ -235,12 +238,10 @@ const Plan = (() => {
     });
   }
 
-  // The point the whole-plaza view puts in the middle of the screen when
-  // there's room to spare: halfway between the middle of the bricks and the
-  // middle of the plaza with its wall and path, which is what looks centred.
-  const bricksMiddle = (SHAPE.arcY - R.field + walkway.bottom) / 2,
-    plazaMiddle = (SHAPE.arcY - R.curbOut + walkway.bottom) / 2,
-    centre = [SHAPE.axis, (bricksMiddle + plazaMiddle) / 2];
+  // The point the whole-plaza view puts in the middle of the screen, when
+  // there's room: the middle of the bricks, from the top of the curved field
+  // to the bottom of the walkway.
+  const centre = [SHAPE.axis, (SHAPE.arcY - R.field + walkway.bottom) / 2];
 
   // The road: where its near white line crosses the line through the
   // monument, the way it runs (left to right), and the way across it (away

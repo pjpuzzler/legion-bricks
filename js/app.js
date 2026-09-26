@@ -348,19 +348,17 @@ const App = (() => {
     sheetCancel();
     const b = selected();
     document.body.classList.toggle("has-brick", !!b);
-    const folded = !state.editor && !!b && compact.matches && state.cardFolded,
-      welcome = !state.editor && !b && compact.matches;
+    const folded = !state.editor && !!b && compact.matches && state.cardFolded;
     el.card.classList.toggle("is-folded", folded);
-    el.card.classList.toggle("is-intro", welcome);
     if (state.editor) {
       state.editor.renderCard(el.card, b);
       layoutChanged();
       return;
     }
     if (!b) {
-      // Phones get the button to every name where a brick's card goes.
-      el.card.hidden = !welcome;
-      el.card.replaceChildren(...(welcome ? intro() : []));
+      // No brick open: no card, just the map (the search box shows every name).
+      el.card.hidden = true;
+      el.card.replaceChildren();
       layoutChanged();
       return;
     }
@@ -573,24 +571,6 @@ const App = (() => {
     el.card.addEventListener("pointercancel", release);
   }
 
-  function intro() {
-    return [
-      h(
-        "button",
-        {
-          type: "button",
-          class: "btn btn-primary btn-big",
-          onclick: () => {
-            setSearching(true);
-            // A phone's keyboard would cover the names they asked to see.
-            if (hover.matches) el.search.focus();
-          },
-        },
-        `See all ${state.bricks.length} names`,
-      ),
-    ];
-  }
-
   // ---- map ----------------------------------------------------------------
 
   function updateMap() {
@@ -611,7 +591,7 @@ const App = (() => {
     const open = compact.matches && !el.card.hidden,
       side = open && sideways.matches,
       height = plan ? plan.height : el.card.offsetHeight,
-      tucked = plan ? plan.folded : el.card.classList.contains("is-folded") || el.card.classList.contains("is-intro"),
+      tucked = plan ? plan.folded : el.card.classList.contains("is-folded"),
       bottom = open && !side ? height + 12 : 0,
       left = side && !tucked ? el.card.offsetWidth + 12 : 0;
     // While the card slides, the zoom buttons follow it (see sheetShow).
@@ -707,7 +687,7 @@ const App = (() => {
     }
     $("#about-text").textContent = `${state.bricks.length} engraved bricks honoring veterans and the post's charter members.`;
     const charts = [
-      ["branch", "By branch", [...branches].sort((a, b) => b[1] - a[1]).map(([k, n]) => [Model.EMBLEMS[k].name, n])],
+      ["branch", "By branch", [...branches].sort((a, b) => b[1] - a[1]).map(([k, n]) => [Model.EMBLEMS[k].name, n, k])],
       ["war", "By war", Model.ERAS.filter((e) => eras.has(e)).map((e) => [e, eras.get(e)])],
     ];
     const bars = (key, entries) => {
@@ -715,11 +695,12 @@ const App = (() => {
       return h(
         "ul",
         { class: "bars", id: `stats-${key}`, role: "tabpanel", "aria-labelledby": `stats-tab-${key}` },
-        entries.map(([label, n]) =>
+        // A branch's row has its emblem, and its bar is in the branch's colour.
+        entries.map(([label, n, branch]) =>
           h(
             "li",
-            {},
-            h("span", { class: "bars-label" }, label),
+            branch ? { dataset: { branch } } : {},
+            h("span", { class: "bars-label" }, branch ? emblemImg(branch, "bars-emblem", "") : null, label),
             h("span", { class: "bars-track" }, h("span", { class: "bars-fill", style: `width:${(n / max) * 100}%` })),
             h("span", { class: "bars-n" }, n),
           ),
