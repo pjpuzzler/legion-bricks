@@ -44,7 +44,7 @@ const App = (() => {
     active: -1, // result highlighted with the arrow keys
     selectedId: null,
     cardFolded: false, // phones: the card shrinks to a bar while the map is being looked around
-    introHidden: false, // phones: the welcome goes away once the map is moved
+    introFolded: false, // phones: the welcome folds down to its button once the map is moved
     editor: null,
   };
   let map;
@@ -345,7 +345,7 @@ const App = (() => {
   function renderCard() {
     const b = selected();
     document.body.classList.toggle("has-brick", !!b);
-    const folded = !state.editor && !!b && compact.matches && state.cardFolded;
+    const folded = !state.editor && compact.matches && (b ? state.cardFolded : state.introFolded);
     el.card.classList.toggle("is-folded", folded);
     if (state.editor) {
       state.editor.renderCard(el.card, b);
@@ -353,11 +353,10 @@ const App = (() => {
       return;
     }
     if (!b) {
-      // Phones get a short welcome in the space where a brick's card goes,
-      // until the map is moved.
-      const welcome = compact.matches && !state.introHidden;
-      el.card.hidden = !welcome;
-      el.card.replaceChildren(...(welcome ? intro() : []));
+      // Phones get a short welcome in the space where a brick's card goes. It
+      // folds like a brick's card, down to the See all names button.
+      el.card.hidden = !compact.matches;
+      el.card.replaceChildren(...(compact.matches ? intro(folded) : []));
       layoutChanged();
       return;
     }
@@ -402,9 +401,11 @@ const App = (() => {
     layoutChanged();
   }
 
+  // Folds the phone card (a brick's, or the welcome) or opens it back up.
   function fold(on) {
-    if (state.cardFolded === on) return;
-    state.cardFolded = on;
+    const key = selected() ? "cardFolded" : "introFolded";
+    if (state[key] === on) return;
+    state[key] = on;
     renderCard();
     // Opened back up, the card covers more of the map than before.
     if (!on) keepBrickInSight();
@@ -425,7 +426,7 @@ const App = (() => {
     let start = null;
     el.card.addEventListener("pointerdown", (e) => {
       const upright = compact.matches && !sideways.matches;
-      if (!upright || state.editor || !selected() || e.target.closest(".card-bar button")) return;
+      if (!upright || state.editor || e.target.closest(".card-bar button")) return;
       start = { id: e.pointerId, y: e.clientY };
     });
     el.card.addEventListener("pointerup", (e) => {
@@ -439,22 +440,34 @@ const App = (() => {
     el.card.addEventListener("pointercancel", () => (start = null));
   }
 
-  function intro() {
+  function intro(folded) {
     return [
+      h("button", {
+        type: "button",
+        class: "card-grab",
+        "aria-label": folded ? "Show more" : "Show less",
+        "aria-expanded": String(!folded),
+        onclick: () => !swiped() && fold(!folded),
+      }),
       h("p", { class: "intro-title" }, "Find a memorial brick"),
       h("p", { class: "intro-text" }, "Type a name in the box above, or look through every name."),
       h(
-        "button",
-        {
-          type: "button",
-          class: "btn btn-primary btn-big",
-          onclick: () => {
-            setSearching(true);
-            // A phone's keyboard would cover the names they asked to see.
-            if (hover.matches) el.search.focus();
+        "div",
+        { class: "intro-bar" },
+        h(
+          "button",
+          {
+            type: "button",
+            class: "btn btn-primary btn-big",
+            onclick: () => {
+              setSearching(true);
+              // A phone's keyboard would cover the names they asked to see.
+              if (hover.matches) el.search.focus();
+            },
           },
-        },
-        `See all ${state.bricks.length} names`,
+          `See all ${state.bricks.length} names`,
+        ),
+        h("button", { type: "button", class: "icon-btn card-open", "aria-label": "Show more", title: "Show more", onclick: () => fold(false) }, icon("open")),
       ),
     ];
   }
@@ -479,9 +492,10 @@ const App = (() => {
       bottom = open && !side ? el.card.offsetHeight + 12 : 0,
       left = side && !el.card.classList.contains("is-folded") ? el.card.offsetWidth + 12 : 0;
     el.mapWrap.style.setProperty("--sheet", `${bottom}px`);
-    // Sideways the zoom buttons run down the right edge, and the plaza is
-    // centred in the space beside them.
-    const controls = sideways.matches && el.mapWrap.querySelector(".map-controls"),
+    // Sideways the zoom buttons run down the right edge. With the side panel
+    // open the plaza is squeezed, so it keeps clear of them. With it folded
+    // there's room, and the plaza sits in the middle of the screen.
+    const controls = left && el.mapWrap.querySelector(".map-controls"),
       right = controls ? Math.round(el.mapWrap.getBoundingClientRect().right - controls.getBoundingClientRect().left) : 0;
     if (compact.matches && !sideways.matches) {
       // Upright, the map sits under the search bar (and the editor bar, if
@@ -545,15 +559,10 @@ const App = (() => {
     },
   };
 
-  // Looking around the map on a phone folds the brick card out of the way,
-  // or puts the welcome away for good (the search box can show every name).
+  // Looking around the map on a phone folds the card (a brick's, or the
+  // welcome) out of the way.
   function foldForMap() {
-    if (state.editor || !compact.matches) return;
-    if (selected()) fold(true);
-    else if (!state.introHidden) {
-      state.introHidden = true;
-      renderCard();
-    }
+    if (!state.editor && compact.matches) fold(true);
   }
 
   // ---- about ----------------------------------------------------------------
@@ -664,16 +673,11 @@ const App = (() => {
       if (btn) state.editor?.onResultClick(Number(btn.dataset.id)) || select(Number(btn.dataset.id));
     });
 
-    // With a brick open, the buttons zoom in on it.
+    // With a brick open, the buttons zoom in on it. They leave the card as it
+    // is, so they stay put under a finger tapping them again.
     const zoomOn = () => (!state.editor && selected()?.slot) || null;
-    $("#zoom-in").addEventListener("click", () => {
-      foldForMap();
-      map.zoomBy(1.7, zoomOn());
-    });
-    $("#zoom-out").addEventListener("click", () => {
-      foldForMap();
-      map.zoomBy(1 / 1.7, zoomOn());
-    });
+    $("#zoom-in").addEventListener("click", () => map.zoomBy(1.7, zoomOn()));
+    $("#zoom-out").addEventListener("click", () => map.zoomBy(1 / 1.7, zoomOn()));
     $("#zoom-fit").addEventListener("click", () => map.fit());
     $("#rotate").addEventListener("click", () => map.rotate());
 
@@ -696,7 +700,38 @@ const App = (() => {
     compact.addEventListener("change", renderCard);
     sideways.addEventListener("change", renderCard);
     bindCardSwipe();
+    stopDoubleTapZoom();
     new ResizeObserver(layoutChanged).observe(el.card);
+  }
+
+  // A quick second tap in the same spot zooms the page on an iPhone. The
+  // stylesheet stops that on buttons and the map, but Safari still zooms on
+  // plain text and backgrounds, so the second tap is stopped here. The zoom
+  // buttons are left alone so they can be tapped fast.
+  function stopDoubleTapZoom() {
+    let start = null,
+      last = null;
+    document.addEventListener(
+      "touchstart",
+      (e) => {
+        const t = e.touches[0];
+        start = e.touches.length === 1 ? { x: t.clientX, y: t.clientY } : null;
+      },
+      { passive: true },
+    );
+    document.addEventListener(
+      "touchend",
+      (e) => {
+        if (e.touches.length || !start) return;
+        const t = e.changedTouches[0],
+          near = (p, r) => Math.hypot(t.clientX - p.x, t.clientY - p.y) < r;
+        if (!near(start, 10)) return (last = null); // a swipe, not a tap
+        const again = last && e.timeStamp - last.time < 400 && near(last, 40);
+        last = again ? null : { time: e.timeStamp, x: t.clientX, y: t.clientY };
+        if (again && !e.target.closest?.("input, textarea, select, canvas, .map-btn")) e.preventDefault();
+      },
+      { passive: false },
+    );
   }
 
   function start() {

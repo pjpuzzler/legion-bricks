@@ -45,9 +45,10 @@ body {
   height: 100%;
 }
 
-/* No double-tap zoom anywhere (pinching still zooms the page). Safari starts
-   over inside anything that scrolls, like the name list and About, so every
-   element says it. The map and the phone card set their own. */
+/* No double-tap zoom on buttons and links (pinching still zooms the page).
+   Safari starts over inside anything that scrolls, like the name list and
+   About, so every element says it. The map and the phone card set their own.
+   Safari still zooms on plain text, and stopDoubleTapZoom in app.js stops that. */
 * {
   touch-action: manipulation;
 }
@@ -548,7 +549,9 @@ select {
 }
 
 .card.is-folded .replica,
-.card.is-folded .card-note {
+.card.is-folded .card-note,
+.card.is-folded .intro-title,
+.card.is-folded .intro-text {
   display: none;
 }
 
@@ -701,6 +704,17 @@ select {
   margin: 0 0 14px;
   color: var(--ink-2);
   font-size: 17px;
+}
+
+/* The See all names button, which stays when the welcome folds. */
+.intro-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.intro-bar .card-open {
+  margin-left: auto;
 }
 
 /* ---- map ---------------------------------------------------------------- */
@@ -1294,6 +1308,11 @@ select {
   /* Upright, the handle on top is what opens a folded card. */
   .card.is-folded .card-open {
     display: none;
+  }
+
+  /* Folded, the welcome is just the button, across the card. */
+  .card.is-folded .intro-bar .btn-big {
+    flex: 1;
   }
 
   /* Swipes on the card fold and open it (see bindCardSwipe in app.js). */

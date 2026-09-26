@@ -113,9 +113,10 @@ const MapView = (() => {
   }
 
   // The flags are pictures of the real ones (img/flags-*.webp, made from the
-  // official artwork): each at 5:3, like a 3 × 5 ft flag, four to a row in
-  // this order. The small sheet loads with the map. The sharp one loads the
-  // first time a flag is drawn big.
+  // official artwork, and for the Air Force the seal flag flown at the post):
+  // each at 5:3, like a 3 × 5 ft flag, four to a row in this order. The small
+  // sheet loads with the map. The sharp one loads the first time a flag is
+  // drawn big.
   const FLAG_ORDER = ["us", "pow", "army", "navy", "air-force", "marines", "coast-guard", "space-force"];
   const FLAG_RATIO = 5 / 3;
   const flagSheets = [
@@ -201,9 +202,9 @@ const MapView = (() => {
         break;
       }
       case "air-force":
-        rect(blue, x, y, w, h);
-        disc(white, 0.2);
-        disc("#4aa3df", 0.14);
+        rect("#2143c2", x, y, w, h);
+        disc(white, 0.32);
+        disc("#0c2f6b", 0.24);
         break;
       case "marines":
         rect("#ba0c2f", x, y, w, h);
@@ -513,35 +514,20 @@ const MapView = (() => {
       return Math.min(aw / (bw * c + bh * s), ah / (bw * s + bh * c));
     }
 
-    // The whole plaza: the frame fills the free part of the screen, centred
-    // on the plaza wherever there's room to spare.
     fitView(angle = this.view.angle) {
-      const v = { x: 0, y: 0, angle, scale: this.fitScale(angle) },
-        f = Plan.frame,
-        i = this.insets,
-        c = Math.abs(Math.cos(angle)),
-        s = Math.abs(Math.sin(angle)),
-        seenW = Math.max(1, this.size.w - i.left - i.right) / v.scale,
-        seenH = Math.max(1, this.size.h - i.top - i.bottom) / v.scale,
-        halfX = (seenW * c + seenH * s) / 2,
-        halfY = (seenW * s + seenH * c) / 2,
-        centre = (lo, hi, half, want) => clamp(want, Math.min(hi - half, lo + half), Math.max(hi - half, lo + half)),
-        [cx, cy] = Plan.centre;
-      return this.clampView(
-        this.placeWorldAt(v, [centre(f.left, f.right, halfX, cx), centre(f.top, f.bottom, halfY, cy)], this.focusPoint()),
-      );
+      const v = { x: 0, y: 0, angle, scale: this.fitScale(angle) };
+      return this.clampView(this.placeWorldAt(v, Plan.centre, this.focusPoint()));
     }
 
     // The limits: you can't zoom out past the whole plaza, and the plaza can
     // only be moved as far as it overflows the screen, plus a little room that
-    // grows as you zoom in. Zooming back out therefore settles it back into
-    // place. While it all fits on screen it stays put, with the brick field
-    // as near the middle as the flags and the lot allow. With keepScale the
-    // zoom is left alone and only the position is fixed.
+    // grows as you zoom in. All the way out it's held in the middle, so it
+    // springs back there after a drag, and zooming back out settles it there
+    // too. With keepScale the zoom is left alone and only the position is fixed.
     clampView(v = this.view, keepScale = false) {
       const fitScale = this.fitScale(v.angle);
       if (!keepScale) v.scale = clamp(v.scale, fitScale, MAX_SCALE);
-      const b = Plan.bounds,
+      const b = Plan.frame,
         i = this.insets,
         c = Math.abs(Math.cos(v.angle)),
         s = Math.abs(Math.sin(v.angle)),
@@ -642,6 +628,7 @@ const MapView = (() => {
     animateTo(target, duration = 600) {
       this.stop();
       this.clampView(target);
+      this.goal = target; // where it's heading, for a zoom that comes mid-way
       if (this.reduceMotion.matches || duration <= 0) {
         Object.assign(this.view, target);
         this.draw();
@@ -666,9 +653,16 @@ const MapView = (() => {
       this.animateTo(this.fitView(), animate ? 500 : 0);
     }
 
+    // An animated zoom that comes while the last one is still going carries on
+    // from where that one was heading, so two quick taps make two whole steps.
+    zoomFrom(animate) {
+      return animate && this.anim ? this.goal : this.view;
+    }
+
     zoomAt(sx, sy, factor, animate = false) {
-      const v = { ...this.view };
-      const anchor = this.screenToWorld(sx, sy);
+      const from = this.zoomFrom(animate),
+        v = { ...from };
+      const anchor = this.screenToWorld(sx, sy, from);
       v.scale = clamp(v.scale * factor, this.fitScale(), MAX_SCALE);
       this.placeWorldAt(v, anchor, [sx, sy]);
       this.isFit = Math.abs(v.scale - this.fitScale()) < 1e-6;
@@ -684,7 +678,7 @@ const MapView = (() => {
     zoomBy(factor, slot = null) {
       let [x, y] = this.focusPoint();
       if (slot) {
-        const [sx, sy] = this.worldToScreen(slot.x + slot.w / 2, slot.y + slot.h / 2),
+        const [sx, sy] = this.worldToScreen(slot.x + slot.w / 2, slot.y + slot.h / 2, this.zoomFrom(true)),
           i = this.insets;
         if (sx > i.left && sx < this.size.w - i.right && sy > i.top && sy < this.size.h - i.bottom) [x, y] = [sx, sy];
       }
