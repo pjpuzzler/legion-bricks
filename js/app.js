@@ -44,6 +44,7 @@ const App = (() => {
     active: -1, // result highlighted with the arrow keys
     selectedId: null,
     cardFolded: false, // phones: the card shrinks to a bar while the map is being looked around
+    introHidden: false, // phones: the welcome goes away once the map is moved
     editor: null,
   };
   let map;
@@ -352,9 +353,11 @@ const App = (() => {
       return;
     }
     if (!b) {
-      // Phones get a short welcome in the space where a brick's card goes.
-      el.card.hidden = !compact.matches;
-      el.card.replaceChildren(...(compact.matches ? intro() : []));
+      // Phones get a short welcome in the space where a brick's card goes,
+      // until the map is moved.
+      const welcome = compact.matches && !state.introHidden;
+      el.card.hidden = !welcome;
+      el.card.replaceChildren(...(welcome ? intro() : []));
       layoutChanged();
       return;
     }
@@ -476,13 +479,17 @@ const App = (() => {
       bottom = open && !side ? el.card.offsetHeight + 12 : 0,
       left = side && !el.card.classList.contains("is-folded") ? el.card.offsetWidth + 12 : 0;
     el.mapWrap.style.setProperty("--sheet", `${bottom}px`);
+    // Sideways the zoom buttons run down the right edge, and the plaza is
+    // centred in the space beside them.
+    const controls = sideways.matches && el.mapWrap.querySelector(".map-controls"),
+      right = controls ? Math.round(el.mapWrap.getBoundingClientRect().right - controls.getBoundingClientRect().left) : 0;
     if (compact.matches && !sideways.matches) {
       // Upright, the map sits under the search bar (and the editor bar, if
       // open). Sideways it runs to the top, beside the panel.
       const top = el.search.closest(".search").getBoundingClientRect().bottom - el.side.getBoundingClientRect().top;
       el.mapWrap.style.top = `${Math.round(top)}px`;
     } else el.mapWrap.style.top = "";
-    map.setInsets({ top: 0, right: 0, bottom, left }, document.body.classList.contains("is-ready"));
+    map.setInsets({ top: 0, right, bottom, left }, document.body.classList.contains("is-ready"));
   }
 
   function showTooltip(text, e) {
@@ -538,8 +545,15 @@ const App = (() => {
     },
   };
 
+  // Looking around the map on a phone folds the brick card out of the way,
+  // or puts the welcome away for good (the search box can show every name).
   function foldForMap() {
-    if (!state.editor && compact.matches && selected()) fold(true);
+    if (state.editor || !compact.matches) return;
+    if (selected()) fold(true);
+    else if (!state.introHidden) {
+      state.introHidden = true;
+      renderCard();
+    }
   }
 
   // ---- about ----------------------------------------------------------------

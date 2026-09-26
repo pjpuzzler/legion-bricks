@@ -45,8 +45,10 @@ body {
   height: 100%;
 }
 
-/* No double-tap zoom on buttons (pinching still zooms the page). */
-html {
+/* No double-tap zoom anywhere (pinching still zooms the page). Safari starts
+   over inside anything that scrolls, like the name list and About, so every
+   element says it. The map and the phone card set their own. */
+* {
   touch-action: manipulation;
 }
 
@@ -744,10 +746,12 @@ select {
   animation: ping 1.9s ease-out infinite;
 }
 
+/* Its tip stops just above the top edge of the brick: --lift is half the
+   brick's height on screen, set by the map. */
 .marker-pin {
   position: absolute;
   left: -18px;
-  top: -58px;
+  top: calc(-44.5px - var(--lift, 0px));
   width: 36px;
   height: 36px;
   border: 3px solid #fff;
@@ -765,8 +769,8 @@ select {
   background: #fff;
 }
 
-.marker.is-close .marker-pin {
-  top: -72px;
+.marker.is-big .marker-ring {
+  display: none;
 }
 
 @keyframes ping {
@@ -1287,6 +1291,11 @@ select {
     cursor: pointer;
   }
 
+  /* Upright, the handle on top is what opens a folded card. */
+  .card.is-folded .card-open {
+    display: none;
+  }
+
   /* Swipes on the card fold and open it (see bindCardSwipe in app.js). */
   .card {
     touch-action: none;
@@ -1407,6 +1416,10 @@ select {
 
   /* Folded, it's the search box and the name, over the lawn in the top
      corner, with an arrow that opens it back down. */
+  .card.is-folded .card-open {
+    display: grid;
+  }
+
   .card-open .icon {
     rotate: 180deg;
   }

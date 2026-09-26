@@ -236,14 +236,26 @@ const Plan = (() => {
     plazaMiddle = (SHAPE.arcY - R.curbOut + walkway.bottom) / 2,
     centre = [SHAPE.axis, (bricksMiddle + plazaMiddle) / 2];
 
-  // What "show the whole plaza" frames: out past the benches, with room for
-  // the flags on top and for the one flying out past the right end.
+  // How far the map can be moved: out past the benches, with room for the
+  // flags on top and for the one flying out past the right end.
   const bounds = {
     left: SHAPE.axis - R.curbOut - SHAPE.benchGap - 3,
     right: SHAPE.axis + R.curbOut + SHAPE.benchGap + 3,
     top: SHAPE.arcY - R.curbOut - 15,
     bottom: lotY + 5, // a strip of the parking lot
   };
+
+  // What the whole-plaza view shows, a little tighter so the bricks come out
+  // bigger: the walls, the walkway and the flags over them, centred on the
+  // plaza. The flags fly to the right, so it reaches just past the flag at
+  // 30°. The poles at the two ends are a drag away.
+  const reach = R.curbOut * Math.cos(Math.PI / 6) + 9, // a flag is 7.5 wide
+    frame = {
+      left: SHAPE.axis - reach,
+      right: SHAPE.axis + reach,
+      top: bounds.top + 0.5,
+      bottom: lotY + 2,
+    };
 
   return {
     SHAPE,
@@ -253,6 +265,7 @@ const Plan = (() => {
     pads,
     centre,
     bounds,
+    frame,
     drawable,
     slots,
     slotAt,

@@ -36,9 +36,8 @@ const MapView = (() => {
     hover: "#14243d",
     ink: "#2b1c10",
     inkGray: "#1d1d1d",
-    granite: "#44474d",
-    graniteTop: "#5c6067",
-    graniteEdge: "#2c2e32",
+    granite: "#62666d",
+    graniteEdge: "#3a3d42",
     pole: "#fbfbfb",
     poleEdge: "#55585c",
     targetOk: "rgba(22, 163, 74, 0.55)",
@@ -113,8 +112,48 @@ const MapView = (() => {
     };
   }
 
-  // A flag at screen size: its field colour and a simple version of its emblem.
-  function drawFlag(ctx, kind, x, y, w, h) {
+  // The flags are pictures of the real ones (img/flags-*.webp, made from the
+  // official artwork): each at 5:3, like a 3 × 5 ft flag, four to a row in
+  // this order. The small sheet loads with the map. The sharp one loads the
+  // first time a flag is drawn big.
+  const FLAG_ORDER = ["us", "pow", "army", "navy", "air-force", "marines", "coast-guard", "space-force"];
+  const FLAG_RATIO = 5 / 3;
+  const flagSheets = [
+    { src: "img/flags-sm.webp", h: 48, gutter: 2 },
+    { src: "img/flags-lg.webp", h: 300, gutter: 4 },
+  ];
+
+  function loadFlags(sheet, done) {
+    if (sheet.img) return;
+    sheet.img = new Image();
+    sheet.img.onload = () => {
+      sheet.ready = true;
+      done();
+    };
+    sheet.img.src = sheet.src;
+  }
+
+  // A flag at screen size (x, y, w, h in CSS px; dpr for how sharp it needs
+  // to be). `redraw` is called when a sharper picture arrives.
+  function drawFlag(ctx, kind, x, y, w, h, dpr, redraw) {
+    const [small, sharp] = flagSheets,
+      big = h * dpr > small.h * 1.25;
+    if (big) loadFlags(sharp, redraw);
+    const sheet = big && sharp.ready ? sharp : small.ready ? small : sharp.ready ? sharp : null;
+    if (sheet) {
+      const k = FLAG_ORDER.indexOf(kind),
+        sw = Math.round(sheet.h * FLAG_RATIO);
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(sheet.img, (k % 4) * (sw + sheet.gutter), Math.floor(k / 4) * (sheet.h + sheet.gutter), sw, sheet.h, x, y, w, h);
+    } else drawPlainFlag(ctx, kind, x, y, w, h);
+    ctx.strokeStyle = "rgba(0,0,0,.35)";
+    ctx.lineWidth = Math.max(0.75, h * 0.03);
+    ctx.strokeRect(x, y, w, h);
+  }
+
+  // Until the pictures load (or if they can't): each flag's field colour and
+  // a simple version of its emblem, in the official colours.
+  function drawPlainFlag(ctx, kind, x, y, w, h) {
     const cx = x + w / 2,
       cy = y + h / 2;
     const rect = (color, rx, ry, rw, rh) => {
@@ -127,63 +166,61 @@ const MapView = (() => {
       ctx.arc(cx, cy + dy * h, r * h, 0, 2 * Math.PI);
       ctx.fill();
     };
-    const blue = "#1f3f86",
-      gold = "#e3c05a",
-      white = "#f6f5f0";
+    const blue = "#001489",
+      gold = "#ffc72c",
+      white = "#ffffff";
     switch (kind) {
       case "us": {
-        const stripe = h / 7;
-        rect("#fff", x, y, w, h);
-        for (let i = 0; i < 7; i += 2) rect("#b22234", x, y + i * stripe, w, stripe);
-        rect("#3c3b6e", x, y, w * 0.42, stripe * 4);
+        const stripe = h / 13;
+        rect(white, x, y, w, h);
+        for (let i = 0; i < 13; i += 2) rect("#b31942", x, y + i * stripe, w, stripe);
+        rect("#0a3161", x, y, w * 0.4, stripe * 7);
         break;
       }
       case "pow":
-        rect("#151515", x, y, w, h);
-        disc("#e6e6e6", 0.24);
+        rect("#000000", x, y, w, h);
+        disc(white, 0.24);
         break;
       case "army":
         rect(white, x, y, w, h);
-        disc(blue, 0.24, -0.06);
-        rect("#b8202e", x + w * 0.28, y + h * 0.72, w * 0.44, h * 0.12);
+        disc(blue, 0.22, -0.1);
+        rect("#c8102e", x + w * 0.3, y + h * 0.68, w * 0.4, h * 0.1);
         break;
       case "space-force": {
-        const d = h * 0.32;
-        rect("#161b2d", x, y, w, h);
-        ctx.fillStyle = "#d9dee6";
+        const d = h * 0.3;
+        rect("#000000", x, y, w, h);
+        disc("#3f6eb2", 0.2, -0.06);
+        ctx.fillStyle = "#e8ecef";
         ctx.beginPath();
         ctx.moveTo(cx, cy - d);
-        ctx.lineTo(cx + d * 0.75, cy + d * 0.8);
-        ctx.lineTo(cx, cy + d * 0.35);
-        ctx.lineTo(cx - d * 0.75, cy + d * 0.8);
+        ctx.lineTo(cx + d * 0.55, cy + d * 0.55);
+        ctx.lineTo(cx, cy + d * 0.3);
+        ctx.lineTo(cx - d * 0.55, cy + d * 0.55);
         ctx.closePath();
         ctx.fill();
         break;
       }
       case "air-force":
-        rect("#1f4fa8", x, y, w, h);
-        disc(gold, 0.29);
-        disc("#f4f4f4", 0.21);
+        rect(blue, x, y, w, h);
+        disc(white, 0.2);
+        disc("#4aa3df", 0.14);
         break;
       case "marines":
-        rect("#b8161c", x, y, w, h);
-        disc("#eab52a", 0.23);
+        rect("#ba0c2f", x, y, w, h);
+        disc(gold, 0.2, -0.08);
+        rect(white, x + w * 0.3, y + h * 0.7, w * 0.4, h * 0.09);
         break;
       case "coast-guard":
         rect(white, x, y, w, h);
-        rect(blue, x + w * 0.3, y + h * 0.14, w * 0.4, h * 0.09);
-        disc(blue, 0.2, 0.08);
+        disc("#002f6c", 0.22);
         break;
       case "navy":
-        rect("#1b2b5e", x, y, w, h);
-        disc(gold, 0.25, -0.06);
-        disc("#f4f4f4", 0.17, -0.06);
-        rect(gold, x + w * 0.28, y + h * 0.73, w * 0.44, h * 0.1);
+        rect("#00263a", x, y, w, h);
+        disc(gold, 0.24, -0.06);
+        disc("#bcd4e6", 0.19, -0.06);
+        rect(gold, x + w * 0.32, y + h * 0.72, w * 0.36, h * 0.08);
         break;
     }
-    ctx.strokeStyle = "rgba(0,0,0,.35)";
-    ctx.lineWidth = Math.max(0.75, h * 0.03);
-    ctx.strokeRect(x, y, w, h);
   }
 
   // Upper half of a ring (y ≤ cy), as seen with y pointing down.
@@ -292,13 +329,10 @@ const MapView = (() => {
     out.border = new Path2D();
     for (const pts of Plan.borderPavers) polygon(out.border, pts);
 
-    // Monument: concrete pad, granite base and the upright stone.
-    out.monumentPad = new Path2D();
-    out.monumentPad.rect(m.left + 1, m.top + 1, m.right - m.left - 2, m.bottom - m.top - 2);
-    out.monumentBase = new Path2D();
-    out.monumentBase.rect(m.left + 1.3, m.top + 1.2, m.right - m.left - 2.6, m.bottom - m.top - 2.4);
+    // Monument: the upright stone, inside its ring of gray pavers (those are
+    // with the border pavers).
     out.monumentStone = new Path2D();
-    out.monumentStone.rect(m.left + 1.9, m.top + 1.8, m.right - m.left - 3.8, m.bottom - m.top - 3.6);
+    out.monumentStone.rect(m.left + 1, m.top + 1, m.right - m.left - 2, m.bottom - m.top - 2);
 
     // Parking lot: angled spaces, with concrete wheel stops in the ones in
     // front of the memorial. Wide enough that its ends never come into view.
@@ -420,6 +454,7 @@ const MapView = (() => {
       this.frame = 0;
       this.static = buildStatic();
       this.tiles = buildTiles();
+      loadFlags(flagSheets[0], () => this.draw());
       this.reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
       new ResizeObserver(() => this.resize()).observe(canvas);
@@ -467,7 +502,7 @@ const MapView = (() => {
     }
 
     fitScale(angle = this.view.angle) {
-      const b = Plan.bounds,
+      const b = Plan.frame,
         c = Math.abs(Math.cos(angle)),
         s = Math.abs(Math.sin(angle)),
         bw = b.right - b.left,
@@ -478,9 +513,23 @@ const MapView = (() => {
       return Math.min(aw / (bw * c + bh * s), ah / (bw * s + bh * c));
     }
 
+    // The whole plaza: the frame fills the free part of the screen, centred
+    // on the plaza wherever there's room to spare.
     fitView(angle = this.view.angle) {
-      const v = { x: 0, y: 0, angle, scale: this.fitScale(angle) };
-      return this.clampView(this.placeWorldAt(v, Plan.centre, this.focusPoint()));
+      const v = { x: 0, y: 0, angle, scale: this.fitScale(angle) },
+        f = Plan.frame,
+        i = this.insets,
+        c = Math.abs(Math.cos(angle)),
+        s = Math.abs(Math.sin(angle)),
+        seenW = Math.max(1, this.size.w - i.left - i.right) / v.scale,
+        seenH = Math.max(1, this.size.h - i.top - i.bottom) / v.scale,
+        halfX = (seenW * c + seenH * s) / 2,
+        halfY = (seenW * s + seenH * c) / 2,
+        centre = (lo, hi, half, want) => clamp(want, Math.min(hi - half, lo + half), Math.max(hi - half, lo + half)),
+        [cx, cy] = Plan.centre;
+      return this.clampView(
+        this.placeWorldAt(v, [centre(f.left, f.right, halfX, cx), centre(f.top, f.bottom, halfY, cy)], this.focusPoint()),
+      );
     }
 
     // The limits: you can't zoom out past the whole plaza, and the plaza can
@@ -850,15 +899,10 @@ const MapView = (() => {
       ctx.stroke(S.plaques);
 
       // Monument
-      ctx.fillStyle = C.concrete;
-      ctx.fill(S.monumentPad);
       ctx.fillStyle = C.granite;
-      ctx.fill(S.monumentBase);
-      ctx.fillStyle = C.graniteTop;
       ctx.fill(S.monumentStone);
       ctx.strokeStyle = C.graniteEdge;
       ctx.lineWidth = Math.max(px, 0.08);
-      ctx.stroke(S.monumentBase);
       ctx.stroke(S.monumentStone);
 
       this.drawNamed(vis);
@@ -977,15 +1021,16 @@ const MapView = (() => {
         const [x, y] = this.worldToScreen(f.x, f.y),
           height = f.main ? fh * 1.2 : fh,
           top = y - height * (f.main ? 2.5 : 2.1),
-          fw = height * 1.55;
+          fw = height * FLAG_RATIO,
+          redraw = () => this.draw();
         ctx.strokeStyle = C.poleEdge;
         ctx.lineWidth = Math.max(1.2, 0.22 * scale);
         ctx.beginPath();
         ctx.moveTo(x, y);
         ctx.lineTo(x, top);
         ctx.stroke();
-        drawFlag(ctx, f.flag, x + 0.6, top, fw, height);
-        if (f.main) drawFlag(ctx, "pow", x + 0.6, top + height + 1, fw * 0.85, height * 0.85);
+        drawFlag(ctx, f.flag, x + 0.6, top, fw, height, dpr, redraw);
+        if (f.main) drawFlag(ctx, "pow", x + 0.6, top + height + 1, fw * 0.85, height * 0.85, dpr, redraw);
       }
       this.worldTransform();
     }
@@ -1050,10 +1095,29 @@ const MapView = (() => {
         this.marker.hidden = true;
         return;
       }
-      const [x, y] = this.worldToScreen(b.slot.x + b.slot.w / 2, b.slot.y + b.slot.h / 2);
+      // The ring goes round the middle of the brick and the tip of the pin
+      // stops just above its top edge, so the pin rides the brick as it grows.
+      const p = b.slot,
+        [x, y] = this.worldToScreen(p.x + p.w / 2, p.y + p.h / 2),
+        corners = [
+          [p.x, p.y],
+          [p.x + p.w, p.y],
+          [p.x, p.y + p.h],
+          [p.x + p.w, p.y + p.h],
+        ].map(([wx, wy]) => this.worldToScreen(wx, wy)),
+        xs = corners.map((c) => c[0]),
+        ys = corners.map((c) => c[1]),
+        top = Math.min(...ys),
+        size = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - top);
+      // Whole device pixels, so the pin doesn't shimmer as the map moves.
+      const { dpr } = this.size,
+        snap = (v) => Math.round(v * dpr) / dpr;
       this.marker.hidden = false;
-      this.marker.style.transform = `translate(${x}px, ${y}px)`;
-      this.marker.classList.toggle("is-close", this.view.scale >= 15); // lift the pin off the text
+      this.marker.style.transform = `translate(${snap(x)}px, ${snap(y)}px)`;
+      this.marker.style.setProperty("--lift", `${snap(y - top)}px`);
+      // Once the brick is bigger than the ring, its red outline shows where it
+      // is, so the ring rests.
+      this.marker.classList.toggle("is-big", size > 56);
     }
 
     // ---- input ----------------------------------------------------------
