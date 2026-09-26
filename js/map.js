@@ -533,46 +533,52 @@ const MapView = (() => {
       return Math.min(aw / (bw * c + bh * s), ah / (bw * s + bh * c));
     }
 
+    // Half of what the free part of the screen shows at `v`, across and down
+    // (in world units, around its middle).
+    halfSeen(v) {
+      const i = this.insets,
+        c = Math.abs(Math.cos(v.angle)),
+        s = Math.abs(Math.sin(v.angle)),
+        seenW = Math.max(1, this.size.w - i.left - i.right) / v.scale,
+        seenH = Math.max(1, this.size.h - i.top - i.bottom) / v.scale;
+      return [(seenW * c + seenH * s) / 2, (seenW * s + seenH * c) / 2];
+    }
+
+    // What the whole-plaza view shows: the frame, and on a screen shaped
+    // differently from it the room beside or below it too, centred on the
+    // plaza as far as the frame allows.
+    fitRect(angle = this.view.angle) {
+      const f = Plan.frame,
+        [hx, hy] = this.halfSeen({ angle, scale: this.fitScale(angle) }),
+        [cx, cy] = Plan.centre,
+        x = clamp(cx, f.right - hx, f.left + hx),
+        y = clamp(cy, f.bottom - hy, f.top + hy);
+      return { left: x - hx, right: x + hx, top: y - hy, bottom: y + hy };
+    }
+
     fitView(angle = this.view.angle) {
       const v = { x: 0, y: 0, angle, scale: this.fitScale(angle) };
       return this.clampView(this.placeWorldAt(v, Plan.centre, this.focusPoint()));
     }
 
-    // The limits: you can't zoom out past the whole plaza, and the plaza can
-    // only be moved as far as it overflows the screen, plus a little room that
+    // The limits: you can't zoom out past the whole plaza, and the map can
+    // only show what the whole-plaza view shows, plus a little room that
     // grows as you zoom in. All the way out it's held in the middle, so it
-    // springs back there after a drag, and zooming back out settles it there
-    // too. Zoomed in, where all of it fits, it's left where it is (so a card
-    // folding away mid-pinch doesn't pull it back to the middle). With
-    // keepScale the zoom is left alone and only the position is fixed.
+    // springs back there after a drag and settles there when zoomed back out.
+    // Zooming in never has to move it, since what's in view only shrinks.
+    // With keepScale the zoom is left alone and only the position is fixed.
     clampView(v = this.view, keepScale = false) {
       const fitScale = this.fitScale(v.angle);
       if (!keepScale) v.scale = clamp(v.scale, fitScale, MAX_SCALE);
-      const zoomed = clamp(v.scale / fitScale - 1, 0, 1),
-        room = PAN_ROOM * zoomed,
-        b = Plan.frame,
-        i = this.insets,
-        c = Math.abs(Math.cos(v.angle)),
-        s = Math.abs(Math.sin(v.angle)),
-        seenW = Math.max(1, this.size.w - i.left - i.right) / v.scale,
-        seenH = Math.max(1, this.size.h - i.top - i.bottom) / v.scale,
-        limit = (value, lo, hi, half, centre) => {
-          const min = lo + half - room,
-            max = hi - half + room;
-          if (min <= max) return clamp(value, min, max);
-          return clamp(zoomed > 0 ? value : centre, max, min);
-        },
+      const room = PAN_ROOM * clamp(v.scale / fitScale - 1, 0, 1),
+        b = this.fitRect(v.angle),
+        [hx, hy] = this.halfSeen(v),
+        // Pulled out past the whole plaza (mid-pinch), it stays in the middle.
+        limit = (value, lo, hi, half) =>
+          lo + half - room > hi - half + room ? (lo + hi) / 2 : clamp(value, lo + half - room, hi - half + room),
         focus = this.focusPoint(),
-        [x, y] = this.screenToWorld(...focus, v),
-        [cx, cy] = Plan.centre;
-      return this.placeWorldAt(
-        v,
-        [
-          limit(x, b.left, b.right, (seenW * c + seenH * s) / 2, cx),
-          limit(y, b.top, b.bottom, (seenW * s + seenH * c) / 2, cy),
-        ],
-        focus,
-      );
+        [x, y] = this.screenToWorld(...focus, v);
+      return this.placeWorldAt(v, [limit(x, b.left, b.right, hx), limit(y, b.top, b.bottom, hy)], focus);
     }
 
     // While a finger is down the map can be pulled a little way past its

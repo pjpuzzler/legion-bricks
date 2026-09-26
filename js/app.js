@@ -367,10 +367,9 @@ const App = (() => {
     el.card.hidden = false;
     // A bar with the name, share and close, over the brick itself. On a phone
     // the card folds down to just the bar while the map is being looked
-    // around. Dragging the card, or tapping its handle or bar, folds and
-    // opens it (see the fold, below).
-    const emblems = Model.emblemsFor(b).slice(0, 2),
-      toggle = () => !swiped() && slideFold(!foldedNow());
+    // around. Dragging or tapping the card folds and opens it (see the fold,
+    // below).
+    const emblems = Model.emblemsFor(b).slice(0, 2);
     el.card.replaceChildren(
       h(
         "div",
@@ -381,12 +380,11 @@ const App = (() => {
               class: "card-grab",
               "aria-label": folded ? "Show the brick" : "Make the card smaller",
               "aria-expanded": String(!folded),
-              onclick: toggle,
             })
           : null,
         h(
           "div",
-          { class: "card-bar", onclick: (e) => compact.matches && !e.target.closest("button") && toggle() },
+          { class: "card-bar" },
           emblems.length
             ? h("span", { class: "card-emblems" }, emblems.map((k) => emblemImg(k, "card-emblem", Model.EMBLEMS[k].name)))
             : null,
@@ -513,6 +511,18 @@ const App = (() => {
   }
 
   function bindCardSwipe() {
+    // A tap on a phone's brick card folds or opens it: anywhere on it but
+    // the brick itself and the share and close buttons, so there's no dead
+    // spot around the handle or the bar. Folded, anywhere but those buttons
+    // opens it.
+    el.card.addEventListener("click", (e) => {
+      if (!compact.matches || state.editor || !selected() || swiped()) return;
+      if (e.target.closest(".card-bar button")) return;
+      const folded = foldedNow(),
+        brick = !folded && el.card.querySelector(".replica")?.getBoundingClientRect();
+      if (brick && e.detail && e.clientY >= brick.top && e.clientY <= brick.bottom) return;
+      slideFold(!folded);
+    });
     el.card.addEventListener("pointerdown", (e) => {
       if (!compact.matches || state.editor || !selected() || sheet.drag) return;
       if ((e.pointerType === "mouse" && e.button !== 0) || e.target.closest(".card-bar button")) return;
@@ -548,7 +558,7 @@ const App = (() => {
       const d = sheet.drag;
       if (!d || d.id !== e.pointerId) return;
       sheet.drag = null;
-      if (!d.g) return; // a tap: the handle's or the bar's own click toggles it
+      if (!d.g) return; // a tap: the card's click folds or opens it
       lastSwipe = performance.now();
       const last = d.samples[d.samples.length - 1],
         first = d.samples[0],
