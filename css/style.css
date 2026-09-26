@@ -1435,6 +1435,13 @@ select {
     background: var(--navy-800);
   }
 
+  /* Browsers that keep the page out of the space beside the notch (Chrome on
+     an iPhone) fill that space with the page background. There it's the
+     lawn's green, so it runs into the map (see markLetterbox in app.js). */
+  :root.is-letterboxed body:not(.is-searching) {
+    background: #97a95b;
+  }
+
   .topbar {
     left: auto;
     top: 10px;

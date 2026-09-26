@@ -231,8 +231,8 @@ const App = (() => {
     el.resultsHead.textContent = state.closeMatches
       ? "No exact match. Did you mean:"
       : state.query
-        ? `${list.length} ${list.length === 1 ? "name" : "names"}`
-        : `All ${state.bricks.length} names`;
+        ? `${list.length} ${list.length === 1 ? "brick" : "bricks"}`
+        : `All ${state.bricks.length} bricks`;
     el.search.setAttribute("aria-activedescendant", state.active >= 0 ? `result-${list[state.active]?.id}` : "");
   }
 
@@ -826,7 +826,23 @@ const App = (() => {
     sideways.addEventListener("change", renderCard);
     bindCardSwipe();
     stopDoubleTapZoom();
+    new ResizeObserver(() => markLetterbox()).observe(document.documentElement);
+    sideways.addEventListener("change", markLetterbox);
     new ResizeObserver(() => layoutChanged()).observe(el.card);
+  }
+
+  // Sideways on a phone with a notch, Safari runs the page into the space
+  // beside the notch. Some browsers (Chrome on an iPhone) keep the page out
+  // of it, so the page is narrower than the screen, and fill it with the
+  // page background. Safari starts out narrow too as a page loads, for a
+  // moment, so it has to stay narrow half a second to count.
+  let letterboxTimer = 0;
+  function markLetterbox() {
+    const root = document.documentElement,
+      narrow = Math.max(screen.width, screen.height) - root.clientWidth > 20;
+    clearTimeout(letterboxTimer);
+    if (sideways.matches && narrow) letterboxTimer = setTimeout(() => root.classList.add("is-letterboxed"), 500);
+    else root.classList.remove("is-letterboxed");
   }
 
   // A quick second tap in the same spot zooms the page on an iPhone. The
