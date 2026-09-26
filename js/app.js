@@ -425,7 +425,12 @@ const App = (() => {
           emblems.length
             ? h("span", { class: "card-emblems" }, emblems.map((k) => emblemImg(k, "card-emblem", Model.EMBLEMS[k].name)))
             : null,
-          h("p", { class: "card-name" }, Model.fullName(b) || "(no name yet)"),
+          h(
+            "div",
+            { class: "card-title" },
+            h("p", { class: "card-name" }, Model.fullName(b) || "(no name yet)"),
+            b.lines.length ? h("p", { class: "card-meta" }, b.lines.join(" · ")) : null,
+          ),
           h("button", { type: "button", class: "icon-btn", "aria-label": "Share", title: "Share", onclick: () => share(b) }, icon("share")),
           h("button", { type: "button", class: "icon-btn", "aria-label": "Close", title: "Close", onclick: deselect }, icon("close")),
         ),
@@ -700,6 +705,10 @@ const App = (() => {
     onZoomedOut(out) {
       $("#zoom-fit").hidden = out;
       $("#zoom-out").disabled = out;
+    },
+    // And zoom in rests once it's all the way in.
+    onZoomedIn(max) {
+      $("#zoom-in").disabled = max;
     },
   };
 

@@ -969,6 +969,11 @@ const MapView = (() => {
         this.zoomedOut = zoomedOut;
         this.cb.onZoomedOut?.(zoomedOut);
       }
+      const zoomedIn = scale >= MAX_SCALE * 0.999;
+      if (zoomedIn !== this.zoomedIn) {
+        this.zoomedIn = zoomedIn;
+        this.cb.onZoomedIn?.(zoomedIn);
+      }
     }
 
     drawStones({ dark, light }) {

@@ -512,11 +512,15 @@ select {
   height: 28px;
 }
 
-/* Long names wrap onto a second line rather than getting cut off. */
-.card-name {
-  display: -webkit-box;
+.card-title {
   flex: 1;
   min-width: 0;
+}
+
+/* Long names wrap onto a second line rather than getting cut off. Under the
+   name, the rest of the engraving, like in the list of names. */
+.card-name {
+  display: -webkit-box;
   margin: 0;
   overflow: hidden;
   font-size: 16px;
@@ -525,6 +529,16 @@ select {
   letter-spacing: 0.02em;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+.card-meta {
+  margin: 1px 0 0;
+  overflow: hidden;
+  color: var(--ink-3);
+  font-size: 13.5px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .brick-card .replica {
@@ -1002,23 +1016,37 @@ select {
   font-variant-numeric: tabular-nums;
 }
 
+/* The credit in the bottom corner, beside the buttons (under them only where
+   there isn't room, like with the text size turned up). */
 .about-foot {
   grid-area: foot;
-  display: grid;
-  gap: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
 }
 
 .about-foot .credit {
+  flex: 1;
   margin: 0;
   color: var(--ink-3);
-  font-size: 14px;
-  text-align: center;
+  font-size: 13.5px;
+  line-height: 1.3;
+}
+
+/* If it wraps, it's after "Made by". */
+.credit-name {
+  white-space: nowrap;
 }
 
 .about-actions {
   display: flex;
-  justify-content: flex-end;
-  gap: 10px;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.about-actions .btn {
+  padding: 0 16px;
 }
 
 /* The smallest phones (like the first iPhone SE). */
@@ -1113,14 +1141,6 @@ select {
 
   .about-foot {
     align-self: end;
-  }
-
-  .about-foot .credit {
-    text-align: left;
-  }
-
-  .about-actions {
-    justify-content: flex-start;
   }
 }
 
@@ -1381,7 +1401,7 @@ select {
 @media (orientation: landscape) and (max-width: 899px), (orientation: landscape) and (max-height: 500px) {
   :root {
     --topbar-h: 0px;
-    --panel-w: min(290px, 40vw);
+    --panel-w: min(300px, 40vw);
     --search-row: 60px;
     --bar-top: 0px;
     --list-top: var(--search-row);
@@ -1467,6 +1487,11 @@ select {
   /* Folding, its bottom edge rises over the brick. */
   .card.is-moving {
     overflow: hidden;
+  }
+
+  /* The panel is narrow, so the name and the line under it get the room. */
+  .card-emblems {
+    display: none;
   }
 
   .card-grab {
