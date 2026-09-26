@@ -1,6 +1,7 @@
 /*
- * editor.js: add, edit and move bricks right on the map. Loaded when the site
- * is running on your own computer and the address ends in ?edit.
+ * editor.js: add, edit and move bricks right on the map. It only loads on your
+ * own computer: in this folder run `python3 -m http.server 8000`, then open
+ * http://localhost:8000/?edit.
  *
  * Edits are kept in this browser until you click Save, which writes a fresh
  * data/bricks.js. Pick that file the first time, and after that Save just works.
