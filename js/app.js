@@ -8,6 +8,7 @@ const App = (() => {
     search: $("#search"),
     clear: $("#search-clear"),
     results: $("#results"),
+    resultsPanel: $(".results-panel"),
     resultsHead: $("#results-head"),
     card: $("#card"),
     side: $("#side"),
@@ -25,6 +26,8 @@ const App = (() => {
     "(orientation: landscape) and (max-width: 899px), (orientation: landscape) and (max-height: 500px)",
   );
   const hover = matchMedia("(hover: hover)");
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const TITLE = document.title;
   // iPhones, iPads and Macs get the share icon their owners know.
   const apple = /iPhone|iPad|iPod|Macintosh/.test(navigator.userAgent);
@@ -245,6 +248,8 @@ const App = (() => {
   }
 
   function setSearching(on) {
+    sheetCancel();
+    listScrollsPage();
     document.body.classList.toggle("is-searching", on);
     // On a phone the name list scrolls the page, so the map comes back to a
     // page at the top.
@@ -255,7 +260,40 @@ const App = (() => {
   // New letters in the box show the best matches, from the top of the list.
   function listToTop() {
     el.results.scrollTop = 0;
-    if (compact.matches) scrollTo(0, 0);
+    if (compact.matches && !listOwnScroll) scrollTo(0, 0);
+  }
+
+  // On a phone the name list first scrolls the page itself, because that's
+  // what makes Safari tuck its bars away. Once they're away, the list takes
+  // over its own scrolling, so scrolling back up it doesn't bring them back.
+  // The switch is made as a finger touches the list, before it moves.
+  let listOwnScroll = false;
+  const tallProbe = document.createElement("div");
+  tallProbe.style.cssText = "position:fixed;top:0;left:0;width:0;height:100lvh;visibility:hidden;pointer-events:none";
+  document.body.append(tallProbe);
+  const barsAway = () => innerHeight >= tallProbe.getBoundingClientRect().height - 2;
+
+  function listScrollsItself() {
+    if (listOwnScroll) return;
+    const before = el.results.getBoundingClientRect().top;
+    // The page stays as tall as it was, so it doesn't jump.
+    el.resultsPanel.style.minHeight = `${el.resultsPanel.offsetHeight}px`;
+    document.body.classList.add("list-scrolls");
+    listOwnScroll = true;
+    // The names stay just where they were.
+    el.results.scrollTop = el.results.getBoundingClientRect().top - before;
+  }
+
+  // Back to the page scrolling, with the names where they were (`keep`), or
+  // reset when the list closes.
+  function listScrollsPage(keep = false) {
+    if (!listOwnScroll) return;
+    const inner = el.results.scrollTop,
+      before = el.results.getBoundingClientRect().top;
+    document.body.classList.remove("list-scrolls");
+    el.resultsPanel.style.minHeight = "";
+    listOwnScroll = false;
+    if (keep) scrollBy(0, el.results.getBoundingClientRect().top - before + inner);
   }
 
   // ---- selection ----------------------------------------------------------
@@ -342,6 +380,7 @@ const App = (() => {
   }
 
   function renderCard() {
+    sheetCancel();
     const b = selected();
     document.body.classList.toggle("has-brick", !!b);
     const folded = !state.editor && !!b && compact.matches && state.cardFolded,
@@ -361,11 +400,12 @@ const App = (() => {
       return;
     }
     el.card.hidden = false;
-    // The brick itself, with close and share beside it. On a phone the card
-    // folds down to a slim bar with the name while the map is being looked
-    // around, and tapping the bar brings the brick back.
+    // A bar with the name, share and close, over the brick itself. On a phone
+    // the card folds down to just the bar while the map is being looked
+    // around. Dragging the card, or tapping its handle or bar, folds and
+    // opens it (see the fold, below).
     const emblems = Model.emblemsFor(b).slice(0, 2),
-      toggle = () => !swiped() && fold(!state.cardFolded);
+      toggle = () => !swiped() && slideFold(!foldedNow());
     el.card.replaceChildren(
       h(
         "div",
@@ -386,27 +426,14 @@ const App = (() => {
             ? h("span", { class: "card-emblems" }, emblems.map((k) => emblemImg(k, "card-emblem", Model.EMBLEMS[k].name)))
             : null,
           h("p", { class: "card-name" }, Model.fullName(b) || "(no name yet)"),
-          h("button", { type: "button", class: "icon-btn card-open", "aria-label": "Show the brick", title: "Show the brick", onclick: () => fold(false) }, icon("open")),
+          h("button", { type: "button", class: "icon-btn", "aria-label": "Share", title: "Share", onclick: () => share(b) }, icon("share")),
+          h("button", { type: "button", class: "icon-btn", "aria-label": "Close", title: "Close", onclick: deselect }, icon("close")),
         ),
         replica(b),
-        h(
-          "div",
-          { class: "card-actions" },
-          h("button", { type: "button", class: "icon-btn", "aria-label": "Close", title: "Close", onclick: deselect }, icon("close")),
-          h("button", { type: "button", class: "icon-btn card-share", "aria-label": "Share", title: "Share", onclick: () => share(b) }, icon("share")),
-        ),
         b.slot ? null : h("p", { class: "card-note" }, "This brick isn't on the map yet."),
       ),
     );
     layoutChanged();
-  }
-
-  function fold(on) {
-    if (state.cardFolded === on) return;
-    state.cardFolded = on;
-    renderCard();
-    // Opened back up, the card covers more of the map than before.
-    if (!on) keepBrickInSight();
   }
 
   // Pans the map (only if needed) so the open brick isn't off screen or
@@ -416,26 +443,154 @@ const App = (() => {
     if (b?.slot && !state.editor && !map.isFit) map.reveal(b.slot);
   }
 
-  // On an upright phone the card can also be swiped down to fold it and up to
-  // open it again, like other sheets on a phone.
+  // ---- the phone card's fold ------------------------------------------------
+
+  // Upright the card is a sheet along the bottom, and sideways it hangs from
+  // the top left. A finger drags it between open and folded, and let go, it
+  // settles whichever way it was flicked, or else whichever is nearer. The
+  // same slide plays when its handle or bar is tapped, or the map is moved.
+  const sheet = { busy: false, frame: 0, drag: null, g: null, p: 0, to: 0 };
   let lastSwipe = 0;
   const swiped = () => performance.now() - lastSwipe < 500;
+  const foldedNow = () => (sheet.busy ? sheet.to === 1 : state.cardFolded);
+
+  // The card's height open and folded, laid out both ways before anything
+  // is drawn. Upright it slides down to fold, and sideways its bottom rises.
+  function sheetGeometry() {
+    const card = el.card,
+      folded = card.classList.contains("is-folded");
+    card.classList.remove("is-folded");
+    const open = card.offsetHeight;
+    card.classList.add("is-folded");
+    const shut = card.offsetHeight;
+    card.classList.toggle("is-folded", folded);
+    return { open, shut, span: Math.max(1, open - shut), upright: !sideways.matches };
+  }
+
+  // Shows the card part way: 0 is open and 1 is folded.
+  function sheetShow(p, g) {
+    const shown = g.open - p * g.span;
+    sheet.p = p;
+    sheet.g = g;
+    if (g.upright) el.card.style.transform = `translateY(${(p * g.span).toFixed(1)}px)`;
+    else el.card.style.height = `${shown.toFixed(1)}px`;
+    el.card.style.setProperty("--fold", p.toFixed(3));
+    // Upright, the zoom buttons ride along on top of it.
+    if (g.upright) el.mapWrap.style.setProperty("--sheet", `${Math.round(shown + 12)}px`);
+  }
+
+  // Lays the card out open (the slide keeps back whatever isn't showing yet)
+  // and holds off reframing the map until it's clear where the card is going.
+  function sheetStart() {
+    sheetCancel(false);
+    const g = sheetGeometry();
+    sheet.busy = true;
+    el.card.classList.remove("is-folded");
+    el.card.classList.add("is-moving");
+    return g;
+  }
+
+  // Stops any slide and puts the card back the way the state says.
+  function sheetCancel(dropDrag = true) {
+    cancelAnimationFrame(sheet.frame);
+    sheet.frame = 0;
+    if (dropDrag) sheet.drag = null;
+    if (!sheet.busy) return;
+    sheet.busy = false;
+    el.card.classList.remove("is-moving");
+    el.card.classList.toggle("is-folded", !state.editor && !!selected() && compact.matches && state.cardFolded);
+    el.card.style.transform = el.card.style.height = "";
+    el.card.style.removeProperty("--fold");
+  }
+
+  // Slides the card from `from` to open (0) or folded (1) and leaves it so.
+  // The map is reframed for where it's going at the same time.
+  function sheetSettle(g, from, to) {
+    const folded = to === 1,
+      duration = reduceMotion.matches ? 0 : 120 + 170 * Math.abs(to - from),
+      start = performance.now();
+    sheet.to = to;
+    layoutChanged({ folded, height: folded ? g.shut : g.open });
+    if (!folded) keepBrickInSight();
+    const step = (now) => {
+      const t = duration ? Math.min(1, (now - start) / duration) : 1;
+      sheetShow(from + (to - from) * (1 - (1 - t) ** 3), g);
+      if (t < 1) {
+        sheet.frame = requestAnimationFrame(step);
+        return;
+      }
+      sheet.frame = 0;
+      state.cardFolded = folded;
+      renderCard();
+    };
+    cancelAnimationFrame(sheet.frame);
+    sheet.frame = requestAnimationFrame(step);
+  }
+
+  // Folds or opens the card with the slide. Mid-slide, it turns around.
+  function slideFold(on) {
+    if (!compact.matches || state.editor || !selected()) return;
+    const to = on ? 1 : 0;
+    if (sheet.busy && !sheet.drag) {
+      if (sheet.to !== to) sheetSettle(sheet.g, sheet.p, to);
+      return;
+    }
+    if (sheet.busy || state.cardFolded === on) return;
+    const g = sheetStart(),
+      from = state.cardFolded ? 1 : 0;
+    sheetShow(from, g);
+    sheetSettle(g, from, to);
+  }
+
   function bindCardSwipe() {
-    let start = null;
     el.card.addEventListener("pointerdown", (e) => {
-      const upright = compact.matches && !sideways.matches;
-      if (!upright || state.editor || !selected() || e.target.closest(".card-bar button, .card-actions")) return;
-      start = { id: e.pointerId, y: e.clientY };
+      if (!compact.matches || state.editor || !selected() || sheet.drag) return;
+      if ((e.pointerType === "mouse" && e.button !== 0) || e.target.closest(".card-bar button")) return;
+      sheet.drag = { id: e.pointerId, x: e.clientX, y: e.clientY, g: null, p: 0, from: foldedNow() ? 1 : 0, samples: [] };
     });
-    el.card.addEventListener("pointerup", (e) => {
-      if (!start || start.id !== e.pointerId) return;
-      const dy = e.clientY - start.y;
-      start = null;
-      if (Math.abs(dy) < 30) return;
+    el.card.addEventListener("pointermove", (e) => {
+      const d = sheet.drag;
+      if (!d || d.id !== e.pointerId) return;
+      if (!d.g) {
+        // Only once it's clearly a drag up or down.
+        const dx = e.clientX - d.x,
+          dy = e.clientY - d.y;
+        if (Math.abs(dy) < 8 || Math.abs(dy) < Math.abs(dx)) return;
+        try {
+          el.card.setPointerCapture(e.pointerId);
+        } catch {}
+        if (sheet.busy) {
+          // Caught mid-slide: carry on from where it is.
+          cancelAnimationFrame(sheet.frame);
+          d.g = sheet.g;
+          d.from = sheet.p;
+        } else d.g = sheetStart();
+        d.y = e.clientY;
+      }
+      // Down folds a card along the bottom, and up folds one hanging from the top.
+      const toward = (e.clientY - d.y) * (d.g.upright ? 1 : -1);
+      d.p = clamp(d.from + toward / d.g.span, 0, 1);
+      sheetShow(d.p, d.g);
+      d.samples.push([e.timeStamp, e.clientY]);
+      if (d.samples.length > 5) d.samples.shift();
+    });
+    const release = (e) => {
+      const d = sheet.drag;
+      if (!d || d.id !== e.pointerId) return;
+      sheet.drag = null;
+      if (!d.g) return; // a tap: the handle's or the bar's own click toggles it
       lastSwipe = performance.now();
-      fold(dy > 0);
-    });
-    el.card.addEventListener("pointercancel", () => (start = null));
+      const last = d.samples[d.samples.length - 1],
+        first = d.samples[0],
+        speed =
+          e.type === "pointerup" && first && last
+            ? ((last[1] - first[1]) / Math.max(1, last[0] - first[0])) * (d.g.upright ? 1 : -1)
+            : 0,
+        to = speed > 0.35 ? 1 : speed < -0.35 ? 0 : d.p > 0.5 ? 1 : 0;
+      sheetSettle(d.g, d.p, to);
+    };
+    el.card.addEventListener("pointerup", release);
+    el.card.addEventListener("pointercancel", release);
   }
 
   function intro() {
@@ -464,19 +619,23 @@ const App = (() => {
     map.draw();
   }
 
-  function layoutChanged() {
-    if (!map) return;
+  // Frames the map in what the card leaves free. While the card slides, it's
+  // told where the card is going (`plan`) rather than measuring it part way.
+  function layoutChanged(plan) {
+    if (!map || (sheet.busy && !plan)) return;
     // On a phone the name list covers the map, so the map stays as it was.
     // Otherwise it would slide around behind the list and back again.
     if (compact.matches && document.body.classList.contains("is-searching")) return;
-    // On phones the card is a sheet along the bottom, or down the left side
-    // when the phone is turned sideways. The map is framed in what's left.
+    // On phones the card is a sheet along the bottom, or hangs down the left
+    // side when the phone is turned sideways.
     const open = compact.matches && !el.card.hidden,
       side = open && sideways.matches,
-      bottom = open && !side ? el.card.offsetHeight + 12 : 0,
-      tucked = el.card.classList.contains("is-folded") || el.card.classList.contains("is-intro"),
+      height = plan ? plan.height : el.card.offsetHeight,
+      tucked = plan ? plan.folded : el.card.classList.contains("is-folded") || el.card.classList.contains("is-intro"),
+      bottom = open && !side ? height + 12 : 0,
       left = side && !tucked ? el.card.offsetWidth + 12 : 0;
-    el.mapWrap.style.setProperty("--sheet", `${bottom}px`);
+    // While the card slides, the zoom buttons follow it (see sheetShow).
+    if (!plan) el.mapWrap.style.setProperty("--sheet", `${bottom}px`);
     // Sideways the zoom buttons run down the right edge. With the side panel
     // open the plaza is squeezed, so it keeps clear of them. With it folded
     // there's room, and the plaza sits in the middle of the screen.
@@ -546,7 +705,7 @@ const App = (() => {
 
   // Looking around the map on a phone folds the brick card out of the way.
   function foldForMap() {
-    if (!state.editor && compact.matches && selected()) fold(true);
+    if (!state.editor && compact.matches && selected() && !sheet.drag) slideFold(true);
   }
 
   // ---- about ----------------------------------------------------------------
@@ -652,6 +811,17 @@ const App = (() => {
       },
       { passive: true },
     );
+    // As a finger lands on the list: with Safari's bars away the list scrolls
+    // itself, and with them showing the page scrolls, which tucks them away.
+    el.results.addEventListener(
+      "touchstart",
+      () => {
+        if (!compact.matches || !document.body.classList.contains("is-searching")) return;
+        if (barsAway()) listScrollsItself();
+        else listScrollsPage(true);
+      },
+      { passive: true },
+    );
     el.results.addEventListener("click", (e) => {
       const btn = e.target.closest(".result");
       if (btn) state.editor?.onResultClick(Number(btn.dataset.id)) || select(Number(btn.dataset.id));
@@ -685,7 +855,7 @@ const App = (() => {
     sideways.addEventListener("change", renderCard);
     bindCardSwipe();
     stopDoubleTapZoom();
-    new ResizeObserver(layoutChanged).observe(el.card);
+    new ResizeObserver(() => layoutChanged()).observe(el.card);
   }
 
   // A quick second tap in the same spot zooms the page on an iPhone. The
@@ -698,15 +868,15 @@ const App = (() => {
     document.addEventListener(
       "touchstart",
       (e) => {
-        const t = e.touches[0];
-        start = e.touches.length === 1 ? { x: t.clientX, y: t.clientY } : null;
+        const t = e.touches?.[0];
+        start = t && e.touches.length === 1 ? { x: t.clientX, y: t.clientY } : null;
       },
       { passive: true },
     );
     document.addEventListener(
       "touchend",
       (e) => {
-        if (e.touches.length || !start) return;
+        if (e.touches?.length || !start || !e.changedTouches?.length) return;
         const t = e.changedTouches[0],
           near = (p, r) => Math.hypot(t.clientX - p.x, t.clientY - p.y) < r;
         if (!near(start, 10)) return (last = null); // a swipe, not a tap

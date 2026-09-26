@@ -52,6 +52,7 @@ const MapView = (() => {
   const FONT =
     '"HelveticaNeue-CondensedBold", "Helvetica Neue", "Roboto Condensed", sans-serif-condensed, "Arial Narrow", Helvetica, Arial, sans-serif';
   const MAX_SCALE = 110; // screen px per brick unit
+  const PAN_ROOM = 16; // how far past the plaza's edges you can move once zoomed in
   const OVERSHOOT = 40; // how far (screen px) a drag can pull the map past its limits
   const MIN_TEXT_PX = 6.5;
   // Flags are part of the drawing: sized in brick units, so they scale with
@@ -537,28 +538,29 @@ const MapView = (() => {
       return this.clampView(this.placeWorldAt(v, Plan.centre, this.focusPoint()));
     }
 
-    // The limits: you can't zoom out past the whole plaza, and the map can
-    // only be moved as far as what it's allowed to show overflows the screen.
-    // All the way out that's the whole-plaza frame, so the plaza is held in
-    // the middle, springs back there after a drag, and settles there when
-    // zoomed back out. Zooming in opens up the rest (the world, out to the
-    // road) bit by bit, all of it by twice the zoom. With keepScale the zoom
-    // is left alone and only the position is fixed.
+    // The limits: you can't zoom out past the whole plaza, and the plaza can
+    // only be moved as far as it overflows the screen, plus a little room that
+    // grows as you zoom in. All the way out it's held in the middle, so it
+    // springs back there after a drag, and zooming back out settles it there
+    // too. Zoomed in, where all of it fits, it's left where it is (so a card
+    // folding away mid-pinch doesn't pull it back to the middle). With
+    // keepScale the zoom is left alone and only the position is fixed.
     clampView(v = this.view, keepScale = false) {
       const fitScale = this.fitScale(v.angle);
       if (!keepScale) v.scale = clamp(v.scale, fitScale, MAX_SCALE);
-      const open = clamp(v.scale / fitScale - 1, 0, 1),
-        mix = (k) => Plan.frame[k] + (Plan.world[k] - Plan.frame[k]) * open,
-        b = { left: mix("left"), right: mix("right"), top: mix("top"), bottom: mix("bottom") },
+      const zoomed = clamp(v.scale / fitScale - 1, 0, 1),
+        room = PAN_ROOM * zoomed,
+        b = Plan.frame,
         i = this.insets,
         c = Math.abs(Math.cos(v.angle)),
         s = Math.abs(Math.sin(v.angle)),
         seenW = Math.max(1, this.size.w - i.left - i.right) / v.scale,
         seenH = Math.max(1, this.size.h - i.top - i.bottom) / v.scale,
         limit = (value, lo, hi, half, centre) => {
-          const min = lo + half,
-            max = hi - half;
-          return min > max ? clamp(centre, max, min) : clamp(value, min, max);
+          const min = lo + half - room,
+            max = hi - half + room;
+          if (min <= max) return clamp(value, min, max);
+          return clamp(zoomed > 0 ? value : centre, max, min);
         },
         focus = this.focusPoint(),
         [x, y] = this.screenToWorld(...focus, v),
@@ -590,11 +592,18 @@ const MapView = (() => {
 
     settle() {
       const target = this.clampView({ ...this.view });
-      if (Math.abs(target.scale - this.fitScale()) < 1e-6) this.isFit = true;
+      if (Math.abs(target.scale - this.fitScale()) < 1e-6) {
+        this.isFit = true;
+        if (this.pendingInsets) {
+          this.fit(true, 260);
+          return true;
+        }
+      }
       const moved =
         Math.abs(target.x - this.view.x) + Math.abs(target.y - this.view.y) > 1e-3 ||
         Math.abs(target.scale - this.view.scale) > 1e-3;
       if (moved) this.animateTo(target, 260);
+      else this.adoptInsets();
       return moved;
     }
 
@@ -621,24 +630,37 @@ const MapView = (() => {
 
     // ---- moving the view ------------------------------------------------
 
+    // The panels over the map changed (a card opened, folded or closed). With
+    // the whole plaza showing, it's reframed for them. A panel making room
+    // mustn't make the map jump, though (say a card folding away as a pinch
+    // starts), so then the new room is only taken on once that wouldn't move
+    // the map: with no fingers down and nothing moving, or the next time the
+    // whole plaza is shown.
     setInsets(insets, animate = true) {
-      const changed = Object.keys(insets).some((k) => insets[k] !== this.insets[k]);
+      const keys = Object.keys(insets),
+        changed = keys.some((k) => insets[k] !== this.insets[k]),
+        roomier = keys.every((k) => insets[k] <= this.insets[k]);
+      this.pendingInsets = null;
       if (!changed) return;
-      // Mid-gesture (say the brick card folds as a pinch starts), moving the
-      // map would pull it out from under the fingers. It waits for them to lift.
-      if (this.pointers.size) {
+      if (this.pointers.size || (roomier && !this.isFit)) {
         this.pendingInsets = { ...insets };
+        this.adoptInsets();
         return;
       }
       Object.assign(this.insets, insets);
       if (this.isFit) this.animateTo(this.fitView(), animate ? 250 : 0);
     }
 
-    // Applies insets that changed during a gesture, now that it's over.
-    applyPendingInsets() {
-      if (!this.pendingInsets) return;
+    // Takes on held-back insets, if that won't move the map.
+    adoptInsets() {
+      if (!this.pendingInsets || this.pointers.size || this.anim) return;
+      const held = { ...this.insets };
       Object.assign(this.insets, this.pendingInsets);
-      this.pendingInsets = null;
+      const v = this.clampView({ ...this.view }),
+        moved =
+          Math.abs(v.x - this.view.x) + Math.abs(v.y - this.view.y) > 1e-3 || Math.abs(v.scale - this.view.scale) > 1e-3;
+      if (moved) Object.assign(this.insets, held);
+      else this.pendingInsets = null;
     }
 
     stop() {
@@ -653,6 +675,7 @@ const MapView = (() => {
       if (this.reduceMotion.matches || duration <= 0) {
         Object.assign(this.view, target);
         this.draw();
+        this.adoptInsets();
         return;
       }
       const from = { ...this.view },
@@ -665,13 +688,17 @@ const MapView = (() => {
         this.view.angle = from.angle + (target.angle - from.angle) * t;
         this.render();
         this.anim = t < 1 ? requestAnimationFrame(step) : 0;
+        if (!this.anim) this.adoptInsets();
       };
       this.anim = requestAnimationFrame(step);
     }
 
-    fit(animate = true) {
+    // The whole plaza, framed for the panels as they are now.
+    fit(animate = true, duration = 500) {
+      if (this.pendingInsets) Object.assign(this.insets, this.pendingInsets);
+      this.pendingInsets = null;
       this.isFit = true;
-      this.animateTo(this.fitView(), animate ? 500 : 0);
+      this.animateTo(this.fitView(), animate ? duration : 0);
     }
 
     // An animated zoom that comes while the last one is still going carries on
@@ -687,6 +714,7 @@ const MapView = (() => {
       v.scale = clamp(v.scale * factor, this.fitScale(), MAX_SCALE);
       this.placeWorldAt(v, anchor, [sx, sy]);
       this.isFit = Math.abs(v.scale - this.fitScale()) < 1e-6;
+      if (this.isFit && this.pendingInsets) return this.fit(animate, 250);
       if (animate) this.animateTo(v, 250);
       else {
         Object.assign(this.view, this.clampView(v));
@@ -784,6 +812,8 @@ const MapView = (() => {
       // An animation aimed for the old size would land in the wrong place (say,
       // zoomed out to a phone's view on a big screen), so it's dropped.
       this.stop();
+      if (this.isFit && this.pendingInsets) Object.assign(this.insets, this.pendingInsets);
+      if (this.isFit) this.pendingInsets = null;
       if (first || this.isFit) Object.assign(this.view, this.fitView());
       else this.clampView();
       this.render();
@@ -1254,7 +1284,11 @@ const MapView = (() => {
     pointerUp(e, cancelled) {
       if (!this.pointers.has(e.pointerId)) return;
       this.pointers.delete(e.pointerId);
-      if (!this.pointers.size) this.applyPendingInsets();
+      this.release(e, cancelled);
+      if (!this.pointers.size) this.adoptInsets();
+    }
+
+    release(e, cancelled) {
       if (this.pinch) {
         if (this.pointers.size < 2) {
           this.pinch = null;
@@ -1293,6 +1327,7 @@ const MapView = (() => {
         vx *= k;
         vy *= k;
         this.anim = Math.hypot(vx, vy) > 0.02 ? requestAnimationFrame(step) : 0;
+        if (!this.anim) this.adoptInsets();
       };
       this.anim = requestAnimationFrame(step);
     }

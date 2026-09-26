@@ -256,10 +256,10 @@ const Plan = (() => {
     };
   })();
 
-  // What the whole-plaza view shows: the walls, the walkway and the flags
-  // over them, centred on the plaza. The flags fly to the right, so it
-  // reaches just past the flag at 30°. The poles at the two ends are out
-  // past it, and zooming in gives room to move over to them.
+  // What the whole-plaza view shows, and (with a little room once zoomed in)
+  // how far the map can be moved: the walls, the walkway and the flags over
+  // them, centred on the plaza. The flags fly to the right, so it reaches
+  // just past the flag at 30°. The poles at the two ends are a drag away.
   const reach = R.curbOut * Math.cos(Math.PI / 6) + 9, // a flag is 7.5 wide
     frame = {
       left: SHAPE.axis - reach,
@@ -270,15 +270,6 @@ const Plan = (() => {
       bottom: lotY + 10,
     };
 
-  // How far the map can be moved once zoomed in: over to the benches and the
-  // first shrubs, a way into the parking lot, and back across the road.
-  const world = {
-    left: SHAPE.axis - R.curbOut - 30,
-    right: SHAPE.axis + R.curbOut + 30,
-    top: road.origin[1] - 2 * road.lane - 12,
-    bottom: lotY + 30,
-  };
-
   return {
     SHAPE,
     R,
@@ -287,7 +278,6 @@ const Plan = (() => {
     pads,
     centre,
     frame,
-    world,
     road,
     drawable,
     slots,
