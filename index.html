@@ -1,79 +1,133 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Post 779 Brick Finder</title>
-    <link rel="icon" type="image/jpeg" href="logo.jpeg" />
-    <link rel="stylesheet" href="style.css" />
-    <script src="constants.js"></script>
-    <script src="script.js"></script>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Memorial Bricks · American Legion Post 779</title>
+    <meta
+      name="description"
+      content="Find a memorial brick at American Legion Post 779 in Centre Hall, PA. Type a name to see where it is in the plaza."
+    />
+    <meta name="theme-color" content="#14243d" />
+    <meta property="og:title" content="Memorial Bricks · American Legion Post 779" />
+    <meta property="og:description" content="Type a name to see where its brick is in the memorial plaza." />
+    <meta property="og:image" content="https://pjpuzzler.github.io/legion-bricks/img/share.jpg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="icon" type="image/png" href="img/favicon.png" />
+    <link rel="apple-touch-icon" href="img/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content="Memorial Bricks" />
+    <link rel="stylesheet" href="css/style.css" />
   </head>
   <body>
-    <div id="portrait_blocker">Turn Phone to Landscape</div>
-    <div id="picker-container">
-      <h3>Select name:</h3>
-      <select id="picker" onchange="updateCanvas()"></select>
-    </div>
-    <div id="picker-info">
-      <h3 id="picker-name"></h3>
-      <img id="picker-branch-img" />
-      <br />
-      <img id="picker-branch-img2" />
-    </div>
-    <div id="debug-panel">
-      <div class="debug-panel-header">
-        <strong>Brick debug</strong>
-        <button id="debug-copy" type="button">Copy code</button>
+    <header class="topbar">
+      <a class="brand" href="./">
+        <img class="brand-emblem" src="img/legion-emblem.webp" alt="" width="40" height="40" />
+        <span class="brand-text">
+          <span class="brand-kicker">American Legion Post 779</span>
+          <span class="brand-title">Memorial Bricks</span>
+        </span>
+      </a>
+      <button class="topbar-btn" id="about-open" type="button" aria-haspopup="dialog">About</button>
+    </header>
+
+    <main class="main">
+      <aside class="side" id="side" aria-label="Find a brick">
+        <div class="search">
+          <div class="search-box">
+            <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M10 3a7 7 0 1 0 4.4 12.4l4.6 4.6 1.4-1.4-4.6-4.6A7 7 0 0 0 10 3Zm0 2a5 5 0 1 1 0 10 5 5 0 0 1 0-10Z" />
+            </svg>
+            <input
+              id="search"
+              type="search"
+              placeholder="Type a name"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+              enterkeyhint="search"
+              role="combobox"
+              aria-expanded="true"
+              aria-controls="results"
+              aria-label="Type a name to find its brick"
+            />
+            <button class="search-clear" id="search-clear" type="button" aria-label="Clear" hidden>
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M6.4 5 5 6.4 10.6 12 5 17.6 6.4 19l5.6-5.6 5.6 5.6 1.4-1.4-5.6-5.6L19 6.4 17.6 5 12 10.6Z" />
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="side-body">
+          <section class="card" id="card" aria-live="polite" hidden></section>
+          <section class="results-panel" aria-label="Names">
+            <div class="results-bar">
+              <p class="results-head" id="results-head"></p>
+              <button class="results-close" id="results-close" type="button">Back to map</button>
+            </div>
+            <ol class="results" id="results" role="listbox" aria-label="Names"></ol>
+          </section>
+        </div>
+      </aside>
+
+      <section class="map-wrap" id="map-wrap" aria-label="Map of the memorial plaza">
+        <canvas class="map" id="map" tabindex="0" role="img" aria-label="Map of the brick plaza"></canvas>
+        <div class="marker" id="marker" hidden aria-hidden="true">
+          <span class="marker-ring"></span>
+          <span class="marker-pin"></span>
+        </div>
+        <div class="tooltip" id="tooltip" hidden></div>
+        <div class="map-controls">
+          <!-- Only shown once there's more of the plaza to show. -->
+          <button class="map-btn" id="zoom-fit" type="button" aria-label="Show the whole plaza" title="Show the whole plaza" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 4h6v2H6v4H4zm10 0h6v6h-2V6h-4zM4 14h2v4h4v2H4zm14 0h2v6h-6v-2h4z" />
+            </svg>
+          </button>
+          <button class="map-btn" id="zoom-in" type="button" aria-label="Zoom in" title="Zoom in">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z" /></svg>
+          </button>
+          <button class="map-btn" id="zoom-out" type="button" aria-label="Zoom out" title="Zoom out" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 11h14v2H5z" /></svg>
+          </button>
+          <!-- Turning the map is only for the editor, to match up photos. -->
+          <button class="map-btn" id="rotate" type="button" aria-label="Turn the map" title="Turn the map" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5V2L8 6l4 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7Z" /></svg>
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <dialog class="about" id="about" aria-labelledby="about-title">
+      <div class="about-head">
+        <img src="img/legion-emblem.webp" alt="" width="48" height="48" />
+        <div>
+          <p class="about-kicker">American Legion Post 779</p>
+          <h2 id="about-title" tabindex="-1" autofocus>Memorial Bricks</h2>
+        </div>
       </div>
-      <div id="debug-count"></div>
-      <textarea id="debug-output" readonly></textarea>
-    </div>
-    <div id="debug-tooltip"></div>
-    <dialog id="debug-editor">
-      <form method="dialog" id="debug-form">
-        <h3 id="debug-editor-title">Edit brick</h3>
-        <label>
-          Coordinates
-          <input id="debug-coords" readonly />
-        </label>
-        <label>
-          First name / first text
-          <input id="debug-fname" autocomplete="off" />
-        </label>
-        <label>
-          Last name / second text
-          <input id="debug-lname" autocomplete="off" />
-        </label>
-        <label>
-          Service text
-          <input id="debug-branch" autocomplete="off" />
-        </label>
-        <div class="debug-field">
-          Emblem image(s)
-          <div id="debug-branch-ids" class="debug-emblems"></div>
+      <p class="about-text" id="about-text">Engraved bricks honoring veterans and the post's charter members.</p>
+      <div class="stats" id="stats"></div>
+      <div class="about-foot">
+        <p class="credit">Made by Patrick Johnson</p>
+        <div class="about-actions">
+          <a
+            class="btn"
+            href="https://www.google.com/maps/search/?api=1&query=American+Legion+Post+779%2C+2928+Earlystown+Rd%2C+Centre+Hall%2C+PA"
+            target="_blank"
+            rel="noopener"
+            >Directions</a
+          >
+          <button class="btn btn-primary" type="button" data-close>OK</button>
         </div>
-        <label>
-          Brick color
-          <select id="debug-color">
-            <option value="orange">Orange</option>
-            <option value="gray">Gray</option>
-          </select>
-        </label>
-        <label>
-          War / date / extra text
-          <textarea id="debug-conflict"></textarea>
-        </label>
-        <div class="debug-actions">
-          <button id="debug-delete" type="button">Delete draft</button>
-          <span></span>
-          <button value="cancel" type="submit">Close</button>
-          <button id="debug-save" value="default" type="button">Save</button>
-        </div>
-      </form>
+      </div>
     </dialog>
-    <canvas id="bricks-canvas"></canvas>
-    <div id="circle"></div>
+
+    <div class="toast" id="toast" role="status" hidden></div>
+
+    <script src="data/bricks.js"></script>
+    <script src="js/plan.js"></script>
+    <script src="js/model.js"></script>
+    <script src="js/map.js"></script>
+    <script src="js/app.js"></script>
   </body>
 </html>
