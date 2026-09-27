@@ -24,7 +24,7 @@ const Model = (() => {
     [/\bARMY NURSE\b|\bNURSE CORPS\b/, "army-nurse-corps"],
     [/\bARMY AIR (CORPS|FORCES?)\b|\bAIR CORPS\b|\bAAC\b|\bUSAAF\b/, "army-air-corps"],
     [/\bAIR FORCE\b|\bUSAF\b/, "air-force"],
-    [/\bMARINES?\b|\bUSMC\b/, "marines"],
+    [/\bMARINES?\b|\bU\.? ?S\.? ?M\.? ?C\b/, "marines"],
     [/\bCOAST GUARD\b|\bUSCG\b/, "coast-guard"],
     [/\bNAVY\b|\bUSN\b|\bUSNR\b/, "navy"],
     [/\bARMY\b/, "army"],
@@ -32,8 +32,8 @@ const Model = (() => {
 
   const ERAS = [
     ["Civil War", /\bCIVIL WAR\b/],
-    ["World War I", /\bWWI\b|\bWW ?1\b|\bWORLD WAR (I|1|ONE)\b(?!I)/],
-    ["World War II", /\bWWII\b|\bWW ?2\b|\bWORLD WAR (II|2|TWO)\b/],
+    ["World War I", /\bW\.? ?W\.? ?(I|1)\b|\bWORLD WAR (I|1|ONE)\b(?!I)/],
+    ["World War II", /\bW\.? ?W\.? ?(II|2)\b|\bWORLD WAR (II|2|TWO)\b/],
     ["Korea", /\bKOREA/],
     ["Vietnam", /\bVIETNAM|\bV-?NAM\b/],
     ["Lebanon / Grenada", /\bLEBANON\b|\bGRENADA\b/],
@@ -86,6 +86,10 @@ const Model = (() => {
 
   const fullName = (b) => [b.first, b.last].filter(Boolean).join(" ");
 
+  // The engraved lines, top to bottom: the name (on one line, or the first
+  // name over the last), then the rest.
+  const engraving = (b) => [...(b.split && b.first && b.last ? [b.first, b.last] : [fullName(b)]), ...b.lines];
+
   function slugify(s) {
     return s
       .toLowerCase()
@@ -113,6 +117,7 @@ const Model = (() => {
       first: clean(r.first),
       last: clean(r.last),
       lines,
+      split: r.split === true,
       at: r.at ? String(r.at).trim() : "",
       color: r.color === "gray" ? "gray" : "",
       emblem: r.emblem ? String(r.emblem).trim().toLowerCase() : "",
@@ -123,6 +128,7 @@ const Model = (() => {
   function toRecord(b) {
     const r = { first: b.first, last: b.last };
     if (b.lines.length) r.lines = [...b.lines];
+    if (b.split) r.split = true;
     if (b.at) r.at = b.at;
     if (b.color) r.color = b.color;
     if (b.emblem) r.emblem = b.emblem;
@@ -139,6 +145,7 @@ const Model = (() => {
  * Each brick:
  *   first, last  the name as engraved (the last name is used for sorting)
  *   lines        the other engraved lines, top to bottom
+ *   split        true if the name is engraved on two lines, first name on top
  *   at           its spot on the map as "row-col"; leave it out if not placed yet
  *   color        "gray" for the gray bricks
  *   emblem       only to override the emblem read from the text: "navy", "none"...
@@ -272,6 +279,7 @@ const Model = (() => {
     emblemsFor,
     erasFor,
     fullName,
+    engraving,
     slugify,
     compare,
     fromRecord,

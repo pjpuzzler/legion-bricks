@@ -312,7 +312,7 @@ const App = (() => {
   // on a 200 × 100 brick. A pale copy just below each line catches the light
   // like the lower edge of the cut.
   function replica(b) {
-    const lines = [Model.fullName(b) || " ", ...b.lines],
+    const lines = Model.engraving(b).map((line) => line || " "),
       { size, baselines } = MapView.engrave(lines),
       engraving = (cls, dy) =>
         svg(
@@ -644,7 +644,7 @@ const App = (() => {
         map.draw();
       }
       el.canvas.style.cursor = state.editor?.cursor(hit, b) || (b ? "pointer" : "");
-      showTooltip(editorText ?? (b ? [Model.fullName(b), ...b.lines].join("\n") : ""), e);
+      showTooltip(editorText ?? (b ? Model.engraving(b).join("\n") : ""), e);
     },
     canDrag: (hit) => !!state.editor?.canDrag(hit),
     onDragStart: (hit) => state.editor?.dragStart(hit),

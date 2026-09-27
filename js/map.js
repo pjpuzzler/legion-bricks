@@ -1181,7 +1181,7 @@ const MapView = (() => {
 
     // A brick's engraving layout, cached per brick.
     fitText(b) {
-      const lines = [[b.first, b.last].filter(Boolean).join(" "), ...b.lines],
+      const lines = Model.engraving(b),
         key = lines.join("\n");
       if (b._fit?.key === key) return b._fit;
       const shortText = b.last || b.first || "";

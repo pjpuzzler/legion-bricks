@@ -29,7 +29,7 @@ const Editor = (() => {
   const selected = () => (S.selectedId == null ? null : byId(S.selectedId));
   const copy = (b) => ({ ...Model.toRecord(b), id: b.id, first: b.first, last: b.last, lines: [...b.lines] });
   const fromCopy = (r) => Model.fromRecord(r, r.id);
-  const textKey = (b) => JSON.stringify([b.first, b.last, b.lines, b.color, b.emblem]);
+  const textKey = (b) => JSON.stringify([b.first, b.last, b.lines, b.split, b.color, b.emblem]);
   const tidy = (s) => s.replace(/\s+/g, " ").trim();
   // Bricks are engraved in capitals, but a typed "Mc" (as in McCOOL) is kept.
   const engraved = (s) =>
@@ -498,8 +498,15 @@ const Editor = (() => {
         h("option", { value: "" }, "Tan"),
         h("option", { value: "gray" }, "Gray"),
       ),
+      split: h(
+        "select",
+        { name: "split" },
+        h("option", { value: "" }, "On one line"),
+        h("option", { value: "split" }, "On two lines"),
+      ),
     };
     f.color.value = b.color;
+    f.split.value = b.split ? "split" : "";
 
     const id = b.id;
     const onText = (key) => () =>
@@ -516,6 +523,7 @@ const Editor = (() => {
     f.lines.forEach((i) => i.addEventListener("input", onText("lines")));
     f.emblem.addEventListener("change", () => change(() => (byId(id).emblem = f.emblem.value)));
     f.color.addEventListener("change", () => change(() => (byId(id).color = f.color.value)));
+    f.split.addEventListener("change", () => change(() => (byId(id).split = f.split.value === "split")));
     for (const el of [f.first, f.last, ...f.lines])
       el.addEventListener("keydown", (e) => {
         if (e.key !== "Enter") return;
@@ -542,6 +550,7 @@ const Editor = (() => {
       ),
       h("div", { class: "form-preview" }),
       h("div", { class: "field-row" }, field("First name(s)", f.first), field("Last name", f.last)),
+      h("div", { class: "field-row" }, field("Name", f.split)),
       field("Line 2", f.lines[0]),
       field("Line 3", f.lines[1]),
       field("Line 4 (if any)", f.lines[2]),
@@ -574,6 +583,7 @@ const Editor = (() => {
     );
     f.emblem.value = b.emblem;
     f.color.value = b.color;
+    f.split.value = b.split ? "split" : "";
 
     form.querySelector(".form-preview").replaceChildren(app.replica(b));
 
