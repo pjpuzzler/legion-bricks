@@ -41,11 +41,21 @@ const MapView = (() => {
     granite: "#9a9ea2", // light gray granite, like the monument
     graniteEdge: "#5d6166",
     graniteFleck: "#6f7479",
+    snow: "#eef1f4",
+    snowGravel: "#e9ebec",
+    poppy: "#c8102e",
+    poppyHeart: "#2b1a14",
+    wreath: "#2f5d34",
+    wreathLight: "#4f7f47",
+    bow: "#b3202e",
+    night: "12, 20, 44",
     lampFooting: "#d9cf86", // the footing is painted yellow
     lampFootingEdge: "#a3995a",
     lampPost: "#3a3d42",
     pole: "#fbfbfb",
-    poleEdge: "#55585c",
+    poleShine: "#e9edf1", // brushed aluminum
+    finial: "#d4a93a",
+    poleEdge: "#8d949c",
     targetOk: "rgba(22, 163, 74, 0.55)",
     targetSwap: "rgba(245, 158, 11, 0.6)",
     ghost: "rgba(236, 195, 137, 0.85)",
@@ -185,21 +195,49 @@ const MapView = (() => {
   }
 
   // A flag at screen size (x, y, w, h in CSS px; dpr for how sharp it needs
-  // to be). `redraw` is called when a sharper picture arrives.
-  function drawFlag(ctx, kind, x, y, w, h, dpr, redraw) {
+  // to be), flying from a pole at x: rippling in the wind, out to the right
+  // (dir 1) or the left (-1, seen from the back, so its mirror image, as the
+  // real ones look), and on a still day hanging down at the loose end.
+  // `redraw` is called when a sharper picture arrives.
+  function drawFlag(ctx, kind, x, y, w, h, dpr, redraw, look = { dir: 1, breeze: 0.6 }) {
     const [small, sharp] = flagSheets,
       big = h * dpr > small.h * 1.25;
     if (big) loadFlags(sharp, redraw);
-    const sheet = big && sharp.ready ? sharp : small.ready ? small : sharp.ready ? sharp : null;
+    const sheet = big && sharp.ready ? sharp : small.ready ? small : sharp.ready ? sharp : null,
+      amp = h * (0.035 + 0.05 * look.breeze),
+      droop = h * 0.55 * (1 - look.breeze) ** 2,
+      wave = (t) => amp * Math.sin(t * 5.5 + 0.6) * t + droop * t * t,
+      n = Math.max(8, Math.min(24, Math.round(w / 5))),
+      mirror = look.dir < 0;
+    ctx.save();
+    ctx.translate(x, y);
+    if (mirror) ctx.scale(-1, 1);
     if (sheet) {
       const k = FLAG_ORDER.indexOf(kind),
-        sw = Math.round(sheet.h * FLAG_RATIO);
+        sw = Math.round(sheet.h * FLAG_RATIO),
+        sx = (k % 4) * (sw + sheet.gutter),
+        sy = Math.floor(k / 4) * (sheet.h + sheet.gutter);
       ctx.imageSmoothingQuality = "high";
-      ctx.drawImage(sheet.img, (k % 4) * (sw + sheet.gutter), Math.floor(k / 4) * (sheet.h + sheet.gutter), sw, sheet.h, x, y, w, h);
-    } else drawPlainFlag(ctx, kind, x, y, w, h);
+      for (let i = 0; i < n; i++) {
+        const t0 = i / n,
+          t1 = (i + 1) / n,
+          dy = wave((t0 + t1) / 2),
+          shade = 0.13 * Math.cos(((t0 + t1) / 2) * 5.5 + 0.6);
+        ctx.drawImage(sheet.img, sx + t0 * sw, sy, sw / n, sheet.h, t0 * w, dy, w / n + 0.6, h);
+        ctx.fillStyle = shade > 0 ? `rgba(255,255,255,${shade})` : `rgba(0,0,0,${-shade})`;
+        ctx.fillRect(t0 * w, dy, w / n + 0.6, h);
+      }
+    } else drawPlainFlag(ctx, kind, 0, 0, w, h);
+    ctx.beginPath();
+    ctx.moveTo(0, wave(0));
+    for (let i = 1; i <= n; i++) ctx.lineTo((i / n) * w, wave((i - 0.5) / n));
+    ctx.lineTo(w, wave(1 - 0.5 / n) + h);
+    for (let i = n - 1; i >= 0; i--) ctx.lineTo((i / n) * w, wave((i + 0.5) / n) + h);
+    ctx.closePath();
     ctx.strokeStyle = "rgba(0,0,0,.35)";
     ctx.lineWidth = Math.max(0.75, h * 0.03);
-    ctx.strokeRect(x, y, w, h);
+    ctx.stroke();
+    ctx.restore();
   }
 
   // Until the pictures load (or if they can't): each flag's field colour and
@@ -281,6 +319,17 @@ const MapView = (() => {
     p.arc(cx, cy, r1, 2 * Math.PI, Math.PI, true);
     p.closePath();
     return p;
+  }
+
+  // The same straight onto the canvas, as a new path.
+  function roundedRectPath(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
   }
 
   // Path2D.roundRect only arrived in iOS 16, so older iPhones draw it by hand.
@@ -424,21 +473,28 @@ const MapView = (() => {
       out.monumentFlecks.arc(x, y, r, 0, 2 * Math.PI);
     }
 
-    // The road behind the plaza: two lanes, with a white line along each edge
-    // and a double yellow line down the middle. Long enough that its ends
-    // never come into view.
+    // The road behind the plaza: a lane each way with a turn lane between,
+    // a white line along each edge, and the turn lane marked the usual way (a
+    // solid yellow line along each travel lane, a dashed one inside it). Long
+    // enough that its ends never come into view.
     {
-      const { origin, along, across, lane } = Plan.road,
+      const { origin, along, across, lane, turn } = Plan.road,
+        width = 2 * lane + turn,
         at = (s, d) => [origin[0] + along[0] * s + across[0] * d, origin[1] + along[1] * s + across[1] * d],
-        band = (path, from, to) => polygon(path, [at(-600, from), at(600, from), at(600, to), at(-600, to)]);
+        band = (path, from, to, s0 = -600, s1 = 600) => polygon(path, [at(s0, from), at(s1, from), at(s1, to), at(s0, to)]);
       out.road = new Path2D();
-      band(out.road, -2.5, 2 * lane + 2.5);
+      band(out.road, -2.5, width + 2.5);
       out.roadWhite = new Path2D();
       band(out.roadWhite, -0.75, 0.75);
-      band(out.roadWhite, 2 * lane - 0.75, 2 * lane + 0.75);
+      band(out.roadWhite, width - 0.75, width + 0.75);
       out.roadYellow = new Path2D();
-      band(out.roadYellow, lane - 1.8, lane - 0.6);
-      band(out.roadYellow, lane + 0.6, lane + 1.8);
+      for (const [solid, dashed] of [
+        [lane, lane + 2.4],
+        [lane + turn, lane + turn - 2.4],
+      ]) {
+        band(out.roadYellow, solid - 0.6, solid + 0.6);
+        for (let s0 = -600; s0 < 600; s0 += 120) band(out.roadYellow, dashed - 0.6, dashed + 0.6, s0, s0 + 30);
+      }
     }
 
     // Parking lot: angled spaces, with concrete wheel stops in the ones in
@@ -503,6 +559,41 @@ const MapView = (() => {
       out.benches.rect(middle - 2, hedgeTop + 0.5, 4, depth - 1);
     }
 
+    // The plaza itself, walls and walkway included: it stays lit at night.
+    out.plaza = new Path2D();
+    polygon(out.plaza, [
+      ...Plan.wallBack,
+      [w.left - 1, arcY],
+      [w.left - 1, Plan.lotY],
+      [w.right + 1, Plan.lotY],
+      [w.right + 1, arcY],
+    ]);
+
+    // Red poppies in the stone bed and round the flagpoles, for Memorial Day.
+    out.poppies = new Path2D();
+    out.poppyHearts = new Path2D();
+    const poppy = (x, y) => {
+      const r = 0.42 + rand() * 0.14;
+      out.poppies.moveTo(x + r, y);
+      out.poppies.arc(x, y, r, 0, 2 * Math.PI);
+      out.poppyHearts.moveTo(x + 0.13, y);
+      out.poppyHearts.arc(x, y, 0.13, 0, 2 * Math.PI);
+    };
+    for (let i = 0; i < 170; i++) {
+      const d = rand() * 180,
+        r0 = Plan.edgeAt(d, false) + OFF.gravel + 0.8,
+        r1 = R.gravelOut - 0.8,
+        r = r0 + rand() * (r1 - r0),
+        t = (d * Math.PI) / 180;
+      poppy(axis + r * Math.cos(t), arcY - r * Math.sin(t));
+    }
+    for (const f of Plan.flagpoles)
+      for (let i = 0; i < 7; i++) {
+        const t = rand() * 2 * Math.PI,
+          r = 2.2 + rand() * 1.2;
+        poppy(f.x + r * Math.cos(t), f.y + r * Math.sin(t));
+      }
+
     // Round plaques on top of the pillars.
     out.plaques = new Path2D();
     for (const p of Plan.pillars) {
@@ -510,6 +601,49 @@ const MapView = (() => {
       out.plaques.arc(p.x, p.y, 1.7, 0, 2 * Math.PI);
     }
     return out;
+  }
+
+  // Heights (brick units: 1 is 4 inches) of the things that cast shadows.
+  const HEIGHT = { wall: 7.5, pillar: 11, monument: 13, hedge: 9, bench: 5, pole: 54, mainPole: 84 };
+
+  // Soft shadows for the sun where it is: each raised shape swept a little
+  // way from the sun, never longer than the thing is tall, so they stay quiet
+  // even when the sun is low. The flagpoles throw thin lines (at most two
+  // thirds their height), with a little patch where each flag is. Built again
+  // as the sun moves.
+  function buildShadows(S, sky) {
+    const { altitude } = sky.sun;
+    if (sky.shadow <= 0.02 || altitude < 2 || typeof Path2D.prototype.addPath !== "function") return null;
+    const a = (sky.sunOnMap * Math.PI) / 180,
+      cot = 1 / Math.tan((altitude * Math.PI) / 180),
+      dir = [-Math.sin(a), Math.cos(a)],
+      v = dir.map((c) => c * Math.min(1, cot)), // shadow per unit of height
+      vp = dir.map((c) => c * Math.min(0.66, cot)), // the same for the poles
+      fill = new Path2D(),
+      flags = new Path2D(),
+      lines = new Path2D();
+    const sweep = (path, h) => {
+      const n = Math.min(12, Math.max(1, Math.ceil((Math.hypot(...v) * h) / 1.5)));
+      for (let i = 0; i <= n; i++) fill.addPath(path, new DOMMatrix([1, 0, 0, 1, (v[0] * h * i) / n, (v[1] * h * i) / n]));
+    };
+    sweep(S.wall, HEIGHT.wall);
+    sweep(S.pillars, HEIGHT.pillar);
+    sweep(S.monumentStone, HEIGHT.monument);
+    sweep(S.hedges, HEIGHT.hedge);
+    sweep(S.benches, HEIGHT.bench);
+    const wind = [Math.sin((sky.windTo * Math.PI) / 180), -Math.cos((sky.windTo * Math.PI) / 180)],
+      fw = FLAG * FLAG_RATIO;
+    for (const f of Plan.flagpoles) {
+      const h = f.main ? HEIGHT.mainPole : HEIGHT.pole,
+        top = f.main && sky.halfStaff ? h * 0.6 : h,
+        at = (z, out) => [f.x + vp[0] * z + wind[0] * out, f.y + vp[1] * z + wind[1] * out];
+      lines.moveTo(f.x, f.y);
+      lines.lineTo(...at(h, 0));
+      const flag = (z0, z1, len) => polygon(flags, [at(z1, 0), at(z1, len), at(z0, len), at(z0, 0)]);
+      flag(top - FLAG * 1.4, top, fw * 1.4);
+      if (f.main) flag(top - FLAG * 2.7, top - FLAG * 1.5, fw * 1.2);
+    }
+    return { fill, flags, lines };
   }
 
   // Groups the field pavers into tiles so only visible ones get drawn.
@@ -565,11 +699,101 @@ const MapView = (() => {
       this.tiles = buildTiles();
       loadFlags(flagSheets[0], () => this.draw());
       whenFontLoads?.then(() => this.draw());
+      // The plaza as it is now: sun, season, weather and calendar, checked
+      // again each minute.
+      this.sky = Sky.state();
+      Sky.fetchWeather().then(() => this.updateSky());
+      setInterval(() => this.updateSky(), 60000);
+      requestAnimationFrame(() => this.fireworks());
       this.reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
       new ResizeObserver(() => this.resize()).observe(canvas);
       this.bindInput();
       this.resize();
+    }
+
+    // On the evening of the Fourth of July, a few minutes of fireworks over
+    // the map (not with reduced motion). A separate layer, so the map itself
+    // isn't redrawn for them.
+    fireworks() {
+      const sky = this.sky;
+      if (this.fx || !sky.fourth || sky.sun.altitude > -4 || this.reduceMotion.matches) return;
+      const c = document.createElement("canvas");
+      c.setAttribute("aria-hidden", "true");
+      c.style.cssText = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1";
+      this.canvas.after(c);
+      this.fx = c;
+      const g = c.getContext("2d"),
+        sparks = [],
+        colors = ["#ff5a6a", "#ffffff", "#6f9bff", "#ffd36b"],
+        stopAt = performance.now() + 3 * 60000;
+      let last = 0,
+        next = 0;
+      const frame = (t) => {
+        if (document.hidden || t - last < 33) {
+          requestAnimationFrame(frame);
+          return;
+        }
+        const dt = last ? Math.min(0.1, (t - last) / 1000) : 0,
+          dpr = Math.min(window.devicePixelRatio || 1, 2),
+          W = c.clientWidth,
+          H = c.clientHeight;
+        last = t;
+        if (c.width !== Math.round(W * dpr) || c.height !== Math.round(H * dpr)) {
+          c.width = Math.round(W * dpr);
+          c.height = Math.round(H * dpr);
+        }
+        g.setTransform(dpr, 0, 0, dpr, 0, 0);
+        g.clearRect(0, 0, W, H);
+        if (t > next && t < stopAt) {
+          const x = W * (0.15 + 0.7 * Math.random()),
+            y = H * (0.1 + 0.3 * Math.random()),
+            color = colors[Math.floor(Math.random() * colors.length)];
+          for (let i = 0; i < 34; i++) {
+            const a = (i / 34) * 2 * Math.PI,
+              v = 55 + Math.random() * 70;
+            sparks.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 1, color });
+          }
+          next = t + 900 + Math.random() * 1400;
+        }
+        for (let i = sparks.length - 1; i >= 0; i--) {
+          const p = sparks[i];
+          p.vy += 55 * dt;
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.life -= dt / 1.7;
+          if (p.life <= 0) {
+            sparks.splice(i, 1);
+            continue;
+          }
+          g.globalAlpha = p.life;
+          g.fillStyle = p.color;
+          g.fillRect(p.x - 1, p.y - 1, 2.2, 2.2);
+        }
+        g.globalAlpha = 1;
+        if (t > stopAt && !sparks.length) {
+          c.remove();
+          return;
+        }
+        requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    }
+
+    updateSky() {
+      const next = Sky.state(),
+        was = this.sky;
+      this.sky = next;
+      if (
+        Math.abs(next.sun.azimuth - was.sun.azimuth) > 0.5 ||
+        Math.abs(next.sun.altitude - was.sun.altitude) > 0.3 ||
+        next.windTo !== was.windTo ||
+        next.halfStaff !== was.halfStaff ||
+        next.shadow !== was.shadow
+      )
+        this.shadows = undefined;
+      this.draw();
+      this.fireworks();
     }
 
     // ---- view math ------------------------------------------------------
@@ -968,8 +1192,10 @@ const MapView = (() => {
         px = 1 / scale,
         vis = this.visibleWorld();
 
+      const sky = this.sky,
+        snow = sky.snow;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.fillStyle = C.grass;
+      ctx.fillStyle = snow ? C.snow : `rgb(${sky.lawn})`;
       ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
       this.worldTransform();
       ctx.lineJoin = "round";
@@ -996,34 +1222,22 @@ const MapView = (() => {
       ctx.lineWidth = Math.max(px, 0.1);
       ctx.stroke(S.wheelStops);
 
-      // Gravel beds beside the walkway, with the shrubs on them
-      ctx.fillStyle = C.gravel;
+      // Gravel beds beside the walkway (the shrubs on them come later)
+      ctx.fillStyle = snow ? C.snowGravel : C.gravel;
       ctx.fill(S.hedgeRock);
-      if (scale > 3) this.drawStones(S.bedStones);
-      ctx.fillStyle = C.hedge;
-      ctx.fill(S.hedges);
-      ctx.fillStyle = C.hedgeTop;
-      ctx.fill(S.hedgeTops);
-      ctx.strokeStyle = C.hedgeEdge;
-      ctx.lineWidth = Math.max(px, 0.15);
-      ctx.stroke(S.hedges);
+      if (scale > 3 && !snow) this.drawStones(S.bedStones);
 
       // Curb and gravel rings
       ctx.fillStyle = C.concrete;
       ctx.fill(S.curb);
-      ctx.fillStyle = C.gravel;
+      ctx.fillStyle = snow ? C.snowGravel : C.gravel;
       ctx.fill(S.gravel);
-      if (scale > 3) {
+      if (scale > 3 && !snow) {
         ctx.save();
         ctx.clip(S.gravel); // so no stone pokes out over the path
         this.drawStones(S.ringStones);
         ctx.restore();
       }
-      ctx.fillStyle = C.bench;
-      ctx.fill(S.benches);
-      ctx.strokeStyle = C.benchEdge;
-      ctx.lineWidth = Math.max(px, 0.14);
-      ctx.stroke(S.benches);
 
       // Brick field
       const visibleTiles = this.tiles.filter(
@@ -1063,17 +1277,54 @@ const MapView = (() => {
         ctx.globalAlpha = 1;
       }
 
+      this.drawNamed(vis);
+
+      // Poppies in the stone bed for Memorial Day.
+      if (sky.poppies && !snow) {
+        ctx.fillStyle = C.poppy;
+        ctx.fill(S.poppies);
+        ctx.fillStyle = C.poppyHeart;
+        ctx.fill(S.poppyHearts);
+      }
+
+      // Shadows, while the sun's up, under everything that stands up.
+      if (this.shadows === undefined) this.shadows = buildShadows(S, sky);
+      if (this.shadows) {
+        const a = 0.15 * sky.shadow;
+        ctx.fillStyle = `rgba(24, 28, 40, ${a})`;
+        ctx.fill(this.shadows.fill);
+        ctx.fillStyle = `rgba(24, 28, 40, ${a * 0.7})`;
+        ctx.fill(this.shadows.flags);
+        ctx.strokeStyle = `rgba(24, 28, 40, ${a})`;
+        ctx.lineWidth = 0.35;
+        ctx.stroke(this.shadows.lines);
+      }
+
+      // The shrubs on their beds, and the benches
+      ctx.fillStyle = C.hedge;
+      ctx.fill(S.hedges);
+      ctx.fillStyle = snow ? C.snow : C.hedgeTop;
+      ctx.fill(S.hedgeTops);
+      ctx.strokeStyle = C.hedgeEdge;
+      ctx.lineWidth = Math.max(px, 0.15);
+      ctx.stroke(S.hedges);
+      ctx.fillStyle = snow ? C.snow : C.bench;
+      ctx.fill(S.benches);
+      ctx.strokeStyle = C.benchEdge;
+      ctx.lineWidth = Math.max(px, 0.14);
+      ctx.stroke(S.benches);
+
       // Walls and pillars
       ctx.fillStyle = C.wall;
       ctx.fill(S.wall);
-      ctx.fillStyle = C.wallTop;
+      ctx.fillStyle = snow ? C.snow : C.wallTop;
       ctx.fill(S.wallTop);
       ctx.strokeStyle = C.wallEdge;
       ctx.lineWidth = Math.max(px, 0.1);
       ctx.stroke(S.wall);
       ctx.fillStyle = C.pillar;
       ctx.fill(S.pillars);
-      ctx.fillStyle = C.pillarCap;
+      ctx.fillStyle = snow ? C.snow : C.pillarCap;
       ctx.fill(S.pillarCaps);
       ctx.stroke(S.pillars);
       ctx.fillStyle = C.plaque;
@@ -1081,6 +1332,7 @@ const MapView = (() => {
       ctx.strokeStyle = C.plaqueRim;
       ctx.lineWidth = Math.max(px, 0.22);
       ctx.stroke(S.plaques);
+      if (sky.wreaths) for (const p of Plan.pillars) this.drawWreath(p.x, p.y, 1.95);
 
       // Monument
       ctx.fillStyle = C.granite;
@@ -1092,8 +1344,12 @@ const MapView = (() => {
       ctx.strokeStyle = C.graniteEdge;
       ctx.lineWidth = Math.max(px, 0.08);
       ctx.stroke(S.monumentStone);
+      if (sky.monumentWreath) {
+        const m = Plan.SHAPE.monument;
+        this.drawWreath((m.left + m.right) / 2, m.bottom + 1.7, 1.45);
+      }
 
-      this.drawNamed(vis);
+      this.drawLight(vis);
       this.drawEditOverlays();
       this.drawFlagpoles();
       this.drawText();
@@ -1109,6 +1365,78 @@ const MapView = (() => {
         this.zoomedIn = zoomedIn;
         this.cb.onZoomedIn?.(zoomedIn);
       }
+    }
+
+    // The hour of the day: warm light near sunrise and sunset, and at night
+    // everything round the plaza goes dark while the plaza stays softly lit,
+    // with the lamp and the flags' lights on. The lettering is drawn after,
+    // so it reads the same at any hour.
+    drawLight(vis) {
+      const { ctx, static: S, sky } = this,
+        night = 1 - sky.light,
+        L = Plan.lamp;
+      if (sky.golden > 0) {
+        ctx.fillStyle = `rgba(255, 170, 80, ${0.07 * sky.golden})`;
+        ctx.fillRect(vis.x0, vis.y0, vis.x1 - vis.x0, vis.y1 - vis.y0);
+      }
+      if (night <= 0.02) return;
+      const outside = new Path2D();
+      outside.rect(vis.x0 - 10, vis.y0 - 10, vis.x1 - vis.x0 + 20, vis.y1 - vis.y0 + 20);
+      outside.addPath(S.plaza);
+      ctx.fillStyle = `rgba(${C.night}, ${0.48 * night})`;
+      ctx.fill(outside, "evenodd");
+      ctx.fillStyle = `rgba(${C.night}, ${0.13 * night})`;
+      ctx.fill(S.plaza);
+      ctx.save();
+      ctx.globalCompositeOperation = "screen";
+      const glow = (x, y, r, a) => {
+        const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, `rgba(255, 214, 150, ${a})`);
+        g.addColorStop(1, "rgba(255, 214, 150, 0)");
+        ctx.fillStyle = g;
+        ctx.fillRect(x - r, y - r, 2 * r, 2 * r);
+      };
+      glow(L.x, L.y + 5, 18, 0.55 * night);
+      for (const f of Plan.flagpoles) glow(f.x, f.y, 5, 0.5 * night);
+      ctx.restore();
+    }
+
+    // A Christmas (or remembrance) wreath, from above, with a red bow.
+    drawWreath(x, y, r) {
+      const { ctx } = this;
+      ctx.lineWidth = r * 0.45;
+      ctx.strokeStyle = C.wreath;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, 2 * Math.PI);
+      ctx.stroke();
+      ctx.lineWidth = r * 0.14;
+      ctx.strokeStyle = C.wreathLight;
+      ctx.setLineDash([r * 0.18, r * 0.22]);
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, 2 * Math.PI);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = C.bow;
+      const b = y + r,
+        s = r * 0.42;
+      ctx.beginPath();
+      ctx.moveTo(x, b);
+      ctx.lineTo(x - s, b - s * 0.6);
+      ctx.lineTo(x - s, b + s * 0.6);
+      ctx.closePath();
+      ctx.moveTo(x, b);
+      ctx.lineTo(x + s, b - s * 0.6);
+      ctx.lineTo(x + s, b + s * 0.6);
+      ctx.closePath();
+      ctx.moveTo(x, b);
+      ctx.lineTo(x - s * 0.5, b + s * 1.4);
+      ctx.lineTo(x - s * 0.15, b + s * 1.4);
+      ctx.closePath();
+      ctx.moveTo(x, b);
+      ctx.lineTo(x + s * 0.5, b + s * 1.4);
+      ctx.lineTo(x + s * 0.15, b + s * 1.4);
+      ctx.closePath();
+      ctx.fill();
     }
 
     drawStones({ dark, light }) {
@@ -1206,8 +1534,10 @@ const MapView = (() => {
         ctx.strokeStyle = C.poleEdge;
         ctx.stroke();
       }
-      // The lamp post's footing, painted yellow.
-      const L = Plan.lamp;
+      // The lamp post, from above: its footing (painted yellow), the post, and
+      // the arm reaching out toward the parking lot with the light on its end.
+      const L = Plan.lamp,
+        armEnd = L.y + 3.2;
       ctx.beginPath();
       ctx.arc(L.x, L.y, L.footing, 0, 2 * Math.PI);
       ctx.fillStyle = C.lampFooting;
@@ -1215,47 +1545,55 @@ const MapView = (() => {
       ctx.strokeStyle = C.lampFootingEdge;
       ctx.lineWidth = Math.max(1 / scale, 0.12);
       ctx.stroke();
+      ctx.strokeStyle = C.lampPost;
+      ctx.lineWidth = 0.45;
+      ctx.beginPath();
+      ctx.moveTo(L.x, L.y);
+      ctx.lineTo(L.x, armEnd);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(L.x, L.y, 0.55, 0, 2 * Math.PI);
+      ctx.fillStyle = C.lampPost;
+      ctx.fill();
+      roundedRectPath(ctx, L.x - 0.8, armEnd, 1.6, 2.6, 0.35);
+      ctx.fill();
 
       // Little flags, drawn upright on screen whichever way the map is turned.
       // The tall centre pole flies the US flag with the POW/MIA flag under it.
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      // The lamp, upright the same way: a dark post, and an arm holding out a
-      // shoebox light.
-      {
-        const [x, y] = this.worldToScreen(L.x, L.y),
-          top = y - 6 * scale,
-          arm = 2.2 * scale,
-          w = 3 * scale,
-          h = 0.9 * scale;
-        ctx.strokeStyle = C.lampPost;
-        ctx.lineCap = "round";
-        ctx.lineWidth = Math.max(1.2, 0.3 * scale);
-        ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.lineTo(x, top);
-        ctx.lineTo(x - arm, top);
-        ctx.stroke();
-        ctx.lineCap = "butt";
-        ctx.fillStyle = C.lampPost;
-        ctx.fillRect(x - arm - w, top - h / 2, w, h);
-        ctx.fillStyle = "rgba(255, 244, 205, 0.85)"; // the lens underneath
-        ctx.fillRect(x - arm - w + 0.12 * w, top + h / 2 - Math.max(1, 0.18 * h), w * 0.76, Math.max(1, 0.18 * h));
-      }
-      const fh = FLAG * scale; // in screen px
+      // They fly downwind (to the right until the weather's known), and on
+      // the flag code's half-staff days the centre pole's flags are lowered.
+      const fh = FLAG * scale, // in screen px
+        sky = this.sky,
+        across = Math.sin(((sky.windTo * Math.PI) / 180) + this.view.angle),
+        look = { dir: across < -0.1 ? -1 : 1, breeze: sky.breeze };
       for (const f of Plan.flagpoles) {
         const [x, y] = this.worldToScreen(f.x, f.y),
           height = f.main ? fh * 1.2 : fh,
-          top = y - height * (f.main ? 2.5 : 2.1),
+          poleTop = y - height * (f.main ? 2.5 : 2.1),
+          top = f.main && sky.halfStaff ? poleTop + (y - poleTop) * 0.3 : poleTop,
           fw = height * FLAG_RATIO,
           redraw = () => this.draw();
+        // A satin aluminum pole: a darker edge with a bright line down it.
+        const pw = Math.max(1.4, 0.26 * scale);
         ctx.strokeStyle = C.poleEdge;
-        ctx.lineWidth = Math.max(1.2, 0.22 * scale);
+        ctx.lineWidth = pw;
         ctx.beginPath();
         ctx.moveTo(x, y);
-        ctx.lineTo(x, top);
+        ctx.lineTo(x, poleTop);
         ctx.stroke();
-        drawFlag(ctx, f.flag, x + 0.6, top, fw, height, dpr, redraw);
-        if (f.main) drawFlag(ctx, "pow", x + 0.6, top + height + 1, fw * 0.85, height * 0.85, dpr, redraw);
+        ctx.strokeStyle = C.poleShine;
+        ctx.lineWidth = pw * 0.45;
+        ctx.beginPath();
+        ctx.moveTo(x - pw * 0.12, y);
+        ctx.lineTo(x - pw * 0.12, poleTop);
+        ctx.stroke();
+        ctx.fillStyle = C.finial;
+        ctx.beginPath();
+        ctx.arc(x, poleTop - Math.max(1.2, height * 0.07), Math.max(1.3, height * 0.09), 0, 2 * Math.PI);
+        ctx.fill();
+        drawFlag(ctx, f.flag, x + 0.6 * look.dir, top, fw, height, dpr, redraw, look);
+        if (f.main) drawFlag(ctx, "pow", x + 0.6 * look.dir, top + height + 1, fw * 0.85, height * 0.85, dpr, redraw, look);
       }
       this.worldTransform();
     }
@@ -1269,6 +1607,13 @@ const MapView = (() => {
         detail = detailAt(scale);
       if (!detail || !this.visibleNamed) return;
       ctx.textBaseline = "alphabetic";
+      const ramp = (a, b) => {
+          const t = Math.min(1, Math.max(0, (scale - a) / (b - a)));
+          return t * t * (3 - 2 * t);
+        },
+        full = ramp(FULL_AT - 2, FULL_AT + 0.5),
+        names = ramp(NAMES_AT - 2, NAMES_AT + 0.5) * (1 - ramp(FULL_AT - 3, FULL_AT - 0.5)),
+        bars = 1 - ramp(NAMES_AT - 2.5, NAMES_AT);
       for (const b of this.visibleNamed) {
         const fit = this.fitText(b),
           { size, squeeze, lines } = fit.full,
@@ -1281,26 +1626,34 @@ const MapView = (() => {
         ctx.setTransform(c * dpr, s * dpr, -s * dpr, c * dpr, sx * dpr, sy * dpr);
         ctx.fillStyle = b.color === "gray" ? C.inkGray : C.ink;
         ctx.globalAlpha = b.id === this.scene.selectedId ? 1 : 0.85;
-        if (scale >= FULL_AT) {
-          useFont(ctx, size * scale);
-          ctx.textAlign = "left";
-          ctx.transform(squeeze, 0, 0, 1, 0, 0);
-          for (const l of lines) ctx.fillText(l.text, l.start * scale, (l.baseline - 0.5) * scale);
-        } else if (scale >= NAMES_AT) {
-          // Just the last name, bigger, until the whole engraving fits.
-          const { size: s2, squeeze: k } = fit.short;
-          useFont(ctx, s2 * scale);
-          ctx.textAlign = "center";
-          ctx.transform(k, 0, 0, 1, 0, 0);
-          ctx.fillText(fit.shortText, 0, (CAP_EM * s2 * scale) / 2);
-        } else {
-          ctx.globalAlpha = 0.3 * detail;
+        const strength = ctx.globalAlpha;
+        // Faint bars for the lines, then the last name, then the whole
+        // engraving, each fading into the next as the map zooms.
+        if (bars > 0.01) {
+          ctx.globalAlpha = 0.3 * detail * bars;
           const cap = LETTER * scale,
             thick = Math.max(0.8, cap * 0.6);
           for (const l of lines) {
             const w = l.width * squeeze * scale;
             ctx.fillRect(-w / 2, (l.baseline - 0.5) * scale - cap / 2 - thick / 2, w, thick);
           }
+        }
+        if (names > 0.01) {
+          const { size: s2, squeeze: k } = fit.short;
+          ctx.save();
+          ctx.globalAlpha = strength * names;
+          useFont(ctx, s2 * scale);
+          ctx.textAlign = "center";
+          ctx.transform(k, 0, 0, 1, 0, 0);
+          ctx.fillText(fit.shortText, 0, (CAP_EM * s2 * scale) / 2);
+          ctx.restore();
+        }
+        if (full > 0.01) {
+          ctx.globalAlpha = strength * full;
+          useFont(ctx, size * scale);
+          ctx.textAlign = "left";
+          ctx.transform(squeeze, 0, 0, 1, 0, 0);
+          for (const l of lines) ctx.fillText(l.text, l.start * scale, (l.baseline - 0.5) * scale);
         }
       }
       ctx.globalAlpha = 1;

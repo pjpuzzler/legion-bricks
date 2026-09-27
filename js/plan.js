@@ -15,17 +15,14 @@ const Plan = (() => {
     // Measured off a walk-through video of the plaza (every brick and edge was
     // located on the herringbone itself), except the wall, gravel and curb
     // widths past the border, which the video didn't show.
-    axis: 73.6, // centre line of the entrance, through the curved wall's centre point
-    arcY: 65.4, // centre point of the curved wall
-    // The gray border along the curved wall isn't quite round: it's a little
-    // flatter on the left. Where the bricks stop, as [angle, distance from the
-    // centre point] every 10°, a smooth curve through the edge traced off the
-    // video. 0° is the right end of the arc and 90° the top.
-    edge: [
-      [0, 67.2], [10, 66], [20, 65.3], [30, 65.2], [40, 65.4], [50, 65.7], [60, 66], [70, 66.1], [80, 66],
-      [90, 65.6], [100, 64.9], [110, 64.1], [120, 63.3], [130, 62.8], [140, 62.6], [150, 63], [160, 64.1],
-      [170, 66], [180, 65.4],
-    ],
+    // The curved wall's centre point. Its line up and down (axis) is a little
+    // right of the entrance's centre line and left of the monument's, which
+    // is how the video has it.
+    axis: 75,
+    arcY: 65.4,
+    // Where the bricks stop along the curved wall: a circle round the centre
+    // point, as near the traced edge as it can be and still hold every brick.
+    fieldRadius: 65.25,
     border: 1, // gray border pavers
     pebbles: 1.2, // strip of pebbles between the border and the curved wall
     wall: 3, // stone wall
@@ -68,12 +65,13 @@ const Plan = (() => {
     // in front of the memorial have wheel stops. The last of those ends at the
     // middle of the path's square end on the right.
     parking: { spacing: 29, depth: 54, lean: 0.58, stops: 6 },
-    // Earlystown Road, out past the flags, measured off an aerial photo. It
+    // Earlystown Road, out past the flags, measured off aerial photos. It
     // isn't square to the plaza: it comes a little closer on the right. In
-    // line with the monument, the white line along its near edge is 95 units
-    // (about 32 ft) past the top of the curb, and it drops 0.136 units toward
-    // the plaza for every unit to the right. Each lane is 34 units (11 ft).
-    road: { gap: 95, slope: 0.136, lane: 34 },
+    // line with the curved wall's centre, the white line along its near edge
+    // is 91 units (about 30 ft) past the top of the curb, and it drops 0.136
+    // units toward the plaza for every unit to the right. A lane each way,
+    // 34 units (11 ft) wide, with a turn lane (8 ft) between them.
+    road: { gap: 91.1, slope: 0.136, lane: 34, turn: 24 },
   };
 
   const R = { gravelOut: SHAPE.gravelRadius, curbOut: SHAPE.gravelRadius + SHAPE.curb };
@@ -89,18 +87,8 @@ const Plan = (() => {
   const rad = (deg) => (deg * Math.PI) / 180;
 
   // Distance from the centre point to the border's inner edge, at an angle
-  // in degrees (0° at the right end of the arc), smoothly through SHAPE.edge.
-  function rimAt(deg) {
-    const e = SHAPE.edge,
-      step = e[1][0] - e[0][0],
-      i = clampIndex(Math.floor((deg - e[0][0]) / step), e.length - 2),
-      t = (deg - e[i][0]) / step,
-      [p0, p1, p2, p3] = [i - 1, i, i + 1, i + 2].map((k) => e[clampIndex(k, e.length - 1)][1]);
-    return (
-      p1 + 0.5 * t * (p2 - p0 + t * (2 * p0 - 5 * p1 + 4 * p2 - p3 + t * (3 * (p1 - p2) + p3 - p0)))
-    );
-  }
-  const clampIndex = (i, max) => Math.max(0, Math.min(max, i));
+  // in degrees (0° at the right end of the arc).
+  const rimAt = () => SHAPE.fieldRadius;
 
   // Where the border steps in around each pillar: from one angle to the
   // other, at distance r.
@@ -413,13 +401,14 @@ const Plan = (() => {
   // monument, the way it runs (left to right), and the way across it (away
   // from the plaza), as unit vectors.
   const road = (() => {
-    const { gap, slope, lane } = SHAPE.road,
+    const { gap, slope, lane, turn } = SHAPE.road,
       len = Math.hypot(1, slope);
     return {
       origin: [SHAPE.axis, SHAPE.arcY - R.curbOut - gap],
       along: [1 / len, slope / len],
       across: [slope / len, -1 / len],
       lane,
+      turn,
     };
   })();
 
