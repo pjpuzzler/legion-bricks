@@ -138,8 +138,11 @@ const Sky = (() => {
   // ---- the weather ------------------------------------------------------------
 
   // From Open-Meteo (free, no key): snow on the ground, the wind for the
-  // flags, and cloud (which softens shadows). Kept for half an hour.
-  let weather = null;
+  // flags, and cloud (which softens shadows). Asked for as soon as this file
+  // loads, since the map waits for it before it shows, and kept on the phone
+  // for half an hour, so a second visit has it at once.
+  let weather = null,
+    pending = null;
   const TEST = {
     snow: { snow: true, wind: 8, windFrom: 300, cloud: 60 },
     clear: { snow: false, wind: 12, windFrom: 250, cloud: 0 },
@@ -148,6 +151,9 @@ const Sky = (() => {
     windy: { snow: false, wind: 35, windFrom: 90, cloud: 30 },
   };
   function fetchWeather() {
+    return (pending ||= loadWeather());
+  }
+  function loadWeather() {
     // Locally, ?weather= picks one of the above, and ?wind=250,20 sets where
     // it blows from (compass degrees) and how hard (km/h).
     let test = local && TEST[params.get("weather")];
@@ -158,12 +164,13 @@ const Sky = (() => {
       return Promise.resolve(weather);
     }
     try {
-      const saved = JSON.parse(sessionStorage.getItem("sky-weather") || "null");
+      const saved = JSON.parse(localStorage.getItem("sky-weather") || "null");
       if (saved && Date.now() - saved.at < 30 * 60000) {
         weather = saved.w;
         return Promise.resolve(weather);
       }
     } catch {}
+    if (typeof fetch !== "function") return Promise.resolve(null);
     const url =
       "https://api.open-meteo.com/v1/forecast?latitude=" +
       LAT +
@@ -186,7 +193,7 @@ const Sky = (() => {
           cloud: j.current.cloud_cover,
         };
         try {
-          sessionStorage.setItem("sky-weather", JSON.stringify({ at: Date.now(), w: weather }));
+          localStorage.setItem("sky-weather", JSON.stringify({ at: Date.now(), w: weather }));
         } catch {}
         return weather;
       })
@@ -223,5 +230,6 @@ const Sky = (() => {
     };
   }
 
+  fetchWeather();
   return { now, sun, calendar, state, fetchWeather };
 })();

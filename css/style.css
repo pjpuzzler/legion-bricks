@@ -443,13 +443,17 @@ select {
 }
 
 /* By the name of the fallen, a gold star, and of the missing, the POW/MIA
-   flag (from the flag sheet). */
+   flag (from the flag sheet). Each is sized to the name's capitals and
+   centred on them, whatever size the name is. */
 .honor {
   display: inline-flex;
   flex: none;
   align-items: center;
-  vertical-align: -2px;
-  margin-left: 6px;
+  justify-content: center;
+  height: 0.7em; /* about the capitals, where 1cap isn't known */
+  height: 1cap;
+  vertical-align: baseline;
+  margin-left: 0.35em;
 }
 
 .result-name .honor {
@@ -457,18 +461,23 @@ select {
 }
 
 .honor-star {
-  width: 17px;
-  height: 17px;
+  flex: none;
+  width: 1em;
+  height: 1em;
+  width: 1.45cap;
+  height: 1.45cap;
   filter: drop-shadow(0 0.5px 0.5px rgb(0 0 0 / 0.2));
 }
 
 .honor-flag {
   display: inline-block;
   flex: none;
-  width: 20px;
-  height: 12px;
+  width: 1.23em;
+  height: 0.74em;
+  width: 1.75cap;
+  height: 1.05cap;
   border-radius: 1.5px;
-  background: url("../img/flags-sm.webp") -20.5px 0 / 81.5px 24.5px no-repeat;
+  background: url("../img/flags-sm.webp") 33.333% 0 / 407.5% 204.17% no-repeat;
   box-shadow: 0 0 0 1px rgb(0 0 0 / 0.25);
 }
 
@@ -765,6 +774,19 @@ select {
   box-shadow: inset 0 0 0 3px var(--focus);
 }
 
+/* The map and its pin fade in once the whole scene is ready (see MapView),
+   over the lawn's colour, so nothing pops in by itself. */
+.map,
+.marker {
+  opacity: 0;
+  transition: opacity 0.45s ease-out;
+}
+
+.map-wrap.is-drawn .map,
+.map-wrap.is-drawn .marker {
+  opacity: 1;
+}
+
 .marker {
   position: absolute;
   left: 0;
@@ -854,10 +876,6 @@ select {
 
 .tooltip-name {
   font-weight: 700;
-}
-
-.tooltip .honor {
-  vertical-align: -3px;
 }
 
 .map-controls {
@@ -1715,6 +1733,11 @@ select {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .map,
+  .marker {
+    transition: none;
+  }
+
   .marker-ring {
     animation: none;
     transform: scale(0.8);

@@ -43,6 +43,7 @@ const MapView = (() => {
     graniteFleck: "#6f7479",
     snow: "#eef1f4",
     snowGravel: "#e9ebec",
+    snowEdge: "#c3cad3", // the shaded side of a snow bank
     poppy: "#c8102e",
     poppyHeart: "#2b1a14",
     wreath: "#2f5d34",
@@ -76,11 +77,11 @@ const MapView = (() => {
   // Flags are part of the drawing: sized in brick units, so they scale with
   // everything else at every zoom and look the same on every screen. (They only
   // ever reach over the path and lawn, never the bricks.)
-  const FLAG = 4.5; // flag height, in brick units
+  const FLAG = 5.5; // flag height, in brick units
   // The poles, in heights of their flags (Plan.frame's top reaches the tall
   // one's ball).
-  const MAIN_POLE = 3.6,
-    SIDE_POLE = 2.5;
+  const MAIN_POLE = 3.4,
+    SIDE_POLE = 2.4;
 
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const JOINT = (px) => clamp(1.4 * px, 0.06, 0.16); // grout line width, in brick units
@@ -179,8 +180,8 @@ const MapView = (() => {
   // The flags are pictures of the real ones (img/flags-*.webp, made from the
   // official artwork, and for the Air Force the seal flag flown at the post):
   // each at 5:3, like a 3 × 5 ft flag, four to a row in this order. The small
-  // sheet loads with the map. The sharp one loads the first time a flag is
-  // drawn big.
+  // sheet loads with the map. The sharp one loads soon after it shows (or the
+  // first time a flag is drawn big), before anyone zooms in on a flag.
   const FLAG_ORDER = ["us", "pow", "army", "navy", "air-force", "marines", "coast-guard", "space-force"];
   const FLAG_RATIO = 5 / 3;
   const flagSheets = [
@@ -188,14 +189,21 @@ const MapView = (() => {
     { src: "img/flags-lg.webp", h: 300, gutter: 4 },
   ];
 
+  // Starts a sheet loading (once), calling `done` when it's in. The promise
+  // settles either way.
   function loadFlags(sheet, done) {
-    if (sheet.img) return;
+    if (sheet.img) return sheet.loaded;
     sheet.img = new Image();
-    sheet.img.onload = () => {
-      sheet.ready = true;
-      done();
-    };
+    sheet.loaded = new Promise((resolve) => {
+      sheet.img.onload = () => {
+        sheet.ready = true;
+        done?.();
+        resolve();
+      };
+      sheet.img.onerror = () => resolve();
+    });
     sheet.img.src = sheet.src;
+    return sheet.loaded;
   }
 
   // A flag at screen size (x, y, w, h in CSS px; dpr for how sharp it needs
@@ -205,7 +213,7 @@ const MapView = (() => {
   // `redraw` is called when a sharper picture arrives.
   function drawFlag(ctx, kind, x, y, w, h, dpr, redraw, look = { dir: 1, breeze: 0.6 }) {
     const [small, sharp] = flagSheets,
-      big = h * dpr > small.h * 1.25;
+      big = h * dpr > small.h;
     if (big) loadFlags(sharp, redraw);
     const sheet = big && sharp.ready ? sharp : small.ready ? small : sharp.ready ? sharp : null,
       amp = h * (0.035 + 0.05 * look.breeze),
@@ -477,6 +485,12 @@ const MapView = (() => {
       });
     }
     out.raised.push({ h: HEIGHT.monument, pts: rectPts(m.left + 1, m.top + 1, m.right - 1, m.bottom - 1) });
+    // The lamp's concrete footing stands a little above the walk.
+    const L = Plan.lamp;
+    out.raised.push({
+      h: HEIGHT.lampFooting,
+      pts: Array.from({ length: 16 }, (_, i) => [L.x + L.footing * Math.cos((i * Math.PI) / 8), L.y + L.footing * Math.sin((i * Math.PI) / 8)]),
+    });
 
     out.pillars = new Path2D();
     out.pillarCaps = new Path2D();
@@ -515,6 +529,9 @@ const MapView = (() => {
       out.roadWhite = new Path2D();
       band(out.roadWhite, -0.75, 0.75);
       band(out.roadWhite, width - 0.75, width + 0.75);
+      out.roadSlush = new Path2D();
+      band(out.roadSlush, -2.5, 2.2);
+      band(out.roadSlush, width - 2.2, width + 2.5);
       out.roadYellow = new Path2D();
       for (const [solid, dashed] of [
         [lane, lane + 2.4],
@@ -549,6 +566,22 @@ const MapView = (() => {
       out.lotLines.lineTo(top - lean, lotTop + P.depth);
       const middle = top + P.spacing / 2 - P.lean * (stopY + 0.7 - lotTop);
       if (k >= -P.stops && k < 0) out.wheelStops.rect(middle - 9, stopY, 18, 1.4);
+    }
+
+    // In snow, the lot is plowed: what the plow can't reach stays packed along
+    // the curb (past the wheel stops), heaped higher along the shrubs.
+    {
+      const [left, right] = Plan.pads,
+        wobble = (x) => 0.35 * Math.sin(x * 0.37) + 0.2 * Math.sin(x * 1.13 + 1.7),
+        heap = (x) => {
+          const out = Math.max(left.left - x, x - right.right, 0),
+            t = Math.min(1, Math.max(0, (out - 2) / 8));
+          return 4.6 + 3.2 * t * t * (3 - 2 * t) + wobble(x);
+        },
+        edge = [];
+      for (let x = lotLeft; x <= lotRight; x += 2) edge.push([x, lotTop + heap(x)]);
+      out.snowBank = new Path2D();
+      polygon(out.snowBank, [[lotLeft, Plan.lotY], [lotRight, Plan.lotY], ...edge.reverse()]);
     }
 
     // Past each pad: a gravel bed with a stone bench in it, then a row of shrubs,
@@ -630,18 +663,22 @@ const MapView = (() => {
       out.plaques.moveTo(p.x + 1.7, p.y);
       out.plaques.arc(p.x, p.y, 1.7, 0, 2 * Math.PI);
     }
+    // The tops of everything that stands up, where tall things' shadows are
+    // drawn a second time, over them.
+    out.tops = new Path2D();
+    for (const { pts } of out.raised) polygon(out.tops, pts);
     return out;
   }
 
   // Heights (brick units: 1 is 4 inches) of the things that cast shadows,
   // from Street View and the aerial photo: the walls stand 2½ feet, the
   // flagpoles 20 and 35, and the lamp about 21.
-  const HEIGHT = { wall: 7.5, pillar: 10, monument: 12, hedge: 9, bench: 5, pole: 60, mainPole: 105, lamp: 63 };
+  const HEIGHT = { wall: 7.5, pillar: 10, monument: 12, hedge: 9, bench: 5, pole: 60, mainPole: 105, lamp: 63, lampFooting: 5 };
   const LAMP_ARM = 3.2; // from the lamp post to the light
   // How far a shadow reaches for each unit of height: true to the sun while
-  // it's high (above about 45°), then held under 1.1, so early and late
-  // shadows don't stretch across the plaza.
-  const reach = (cot) => (cot < 0.8 ? cot : 0.8 + 0.3 * Math.tanh((cot - 0.8) / 0.3));
+  // it's high (above about 50°), then held under its height, so early and
+  // late shadows don't stretch across the plaza.
+  const reach = (cot) => (cot < 0.8 ? cot : 0.8 + 0.2 * Math.tanh((cot - 0.8) / 0.2));
 
   const rectPts = (x0, y0, x1, y1) => [
     [x0, y0],
@@ -670,10 +707,10 @@ const MapView = (() => {
   // Shadows for the sun where it is, as an aerial photo shows them: each
   // raised outline swept away from the sun, each flagpole a narrowing strip
   // with its flags rippling beside it (the size they're drawn, so the two
-  // match), and the lamp. Solid things share one outline, so where their
-  // shadows cross they don't darken twice, and it goes under them. The rest
-  // goes over whatever it crosses, walls and all. Built again as the sun
-  // moves.
+  // match), and the lamp. Two outlines, each filled once, so where shadows
+  // cross or join they never darken twice: all of them, for the ground, and
+  // the poles', flags' and lamp's again, for the tops of the walls and
+  // whatever else they fall across. Built again as the sun moves.
   function buildShadows(S, sky) {
     const { altitude } = sky.sun;
     if (sky.shadow <= 0.02 || altitude < 2) return null;
@@ -686,25 +723,26 @@ const MapView = (() => {
       // Across the shadows.
       nx = -Math.cos(a),
       ny = -Math.sin(a),
-      ground = new Path2D(),
+      all = new Path2D(),
       high = new Path2D(),
-      cloth = new Path2D(); // the flags, which let some light through
-    for (const { h, pts } of S.raised) polygon(ground, hull([...pts, ...pts.map(([x, y]) => at(x, y, h))]));
+      // Something tall enough to fall across the walls.
+      tall = (pts) => {
+        polygon(all, pts);
+        polygon(high, pts);
+      };
+    for (const { h, pts } of S.raised) polygon(all, hull([...pts, ...pts.map(([x, y]) => at(x, y, h))]));
 
-    // A pole, `w0` wide at the foot and `w1` at the top. A thin pole's
-    // shadow blurs away along its length (the sun isn't a point), so each
-    // is drawn on its own, fading.
-    const poles = [];
-    const pole = (x, y, h, w0, w1) => {
-      const [tx, ty] = at(x, y, h),
-        strip = new Path2D();
-      polygon(strip, [
-        [x + (nx * w0) / 2, y + (ny * w0) / 2],
+    // A pole from `z0` up (0, or the top of what it stands on) to `h`, `w0`
+    // wide at the foot and `w1` at the top.
+    const pole = (x, y, h, w0, w1, z0 = 0) => {
+      const [bx, by] = at(x, y, z0),
+        [tx, ty] = at(x, y, h);
+      tall([
+        [bx + (nx * w0) / 2, by + (ny * w0) / 2],
         [tx + (nx * w1) / 2, ty + (ny * w1) / 2],
         [tx - (nx * w1) / 2, ty - (ny * w1) / 2],
-        [x - (nx * w0) / 2, y - (ny * w0) / 2],
+        [bx - (nx * w0) / 2, by - (ny * w0) / 2],
       ]);
-      poles.push({ strip, from: [x, y], to: [tx, ty], fade: Math.max(0.15, 1 - (h * k) / 140) });
     };
     // A flag flying downwind from its pole, top edge `top` up: rippling
     // across the wind, and on a still day sagging at its loose end, as drawn.
@@ -726,14 +764,14 @@ const MapView = (() => {
         lower.push(at(px, py, top - sag - hoist));
       }
       // Strip by strip, so a flag seen edge-on can't fold over itself.
-      for (let i = 0; i < n; i++) polygon(cloth, hull([upper[i], upper[i + 1], lower[i + 1], lower[i]]));
+      for (let i = 0; i < n; i++) tall(hull([upper[i], upper[i + 1], lower[i + 1], lower[i]]));
     };
     for (const f of Plan.flagpoles) {
       const h = f.main ? HEIGHT.mainPole : HEIGHT.pole,
         hoist = f.main ? FLAG * 1.2 : FLAG,
         // At half-staff, the flag hangs halfway down.
         top = f.main && sky.halfStaff ? (h + hoist) / 2 : h - 1.5;
-      pole(f.x, f.y, h, f.main ? 1.2 : 0.85, f.main ? 0.5 : 0.4);
+      pole(f.x, f.y, h, f.main ? 0.9 : 0.65, 0.05);
       flag(f.x, f.y, top, hoist, hoist * FLAG_RATIO);
       if (f.main) flag(f.x, f.y, top - hoist * 1.06, hoist * 0.85, hoist * 0.85 * FLAG_RATIO);
     }
@@ -741,11 +779,13 @@ const MapView = (() => {
     // The lamp post, its arm reaching toward the parking lot, and the light.
     const L = Plan.lamp,
       lh = HEIGHT.lamp;
-    pole(L.x, L.y, lh, 0.8, 0.6);
-    polygon(high, hull(rectPts(L.x - 0.22, L.y, L.x + 0.22, L.y + LAMP_ARM).map(([x, y]) => at(x, y, lh - 0.3))));
+    // (The post stands on its footing, so its shadow starts where the
+    // footing's ends.)
+    pole(L.x, L.y, lh, 0.9, 0.45, HEIGHT.lampFooting);
+    tall(hull(rectPts(L.x - 0.22, L.y, L.x + 0.22, L.y + LAMP_ARM).map(([x, y]) => at(x, y, lh - 0.3))));
     const head = rectPts(L.x - 0.8, L.y + LAMP_ARM, L.x + 0.8, L.y + LAMP_ARM + 2.6);
-    polygon(high, hull([...head.map(([x, y]) => at(x, y, lh - 0.3)), ...head.map(([x, y]) => at(x, y, lh - 1.6))]));
-    return { ground, high, cloth, poles };
+    tall(hull([...head.map(([x, y]) => at(x, y, lh - 0.3)), ...head.map(([x, y]) => at(x, y, lh - 1.6))]));
+    return { all, high };
   }
 
   // Groups the field pavers into tiles so only visible ones get drawn.
@@ -799,18 +839,34 @@ const MapView = (() => {
       this.frame = 0;
       this.static = buildStatic();
       this.tiles = buildTiles();
-      loadFlags(flagSheets[0], () => this.draw());
-      whenFontLoads?.then(() => this.draw());
       // The plaza as it is now: sun, season, weather and calendar, checked
-      // again each minute. Clouds soften the shadows, so they wait for the
-      // weather and then fade in, instead of showing one way and changing.
+      // again each minute.
       this.sky = Sky.state();
-      this.shadowsIn = 0;
-      const asked = performance.now();
-      Sky.fetchWeather().then(() => {
-        this.updateSky();
-        this.showShadows(performance.now() - asked < 150);
-      });
+      this.shadowsIn = 0; // how far the shadows have faded in
+      this.windIn = 0; // and how far the flags have caught the wind
+      // The map stays hidden until the flag pictures, the lettering and the
+      // weather (for the shadows and the wind) are in, or a moment has gone
+      // by, then fades in whole, so nothing pops in by itself. Whatever comes
+      // later eases in.
+      this.shown = false;
+      canvas.parentElement.style.backgroundColor = `rgb(${this.sky.lawn})`;
+      const flagsIn = loadFlags(flagSheets[0]).then(() => this.draw()),
+        fontIn = whenFontLoads?.then(() => this.draw()),
+        weatherIn = Sky.fetchWeather().then(() => {
+          this.updateSky();
+          this.ease("shadowsIn");
+          this.ease("windIn");
+        });
+      const reveal = () => {
+        if (this.shown) return;
+        this.shown = true;
+        this.render();
+        requestAnimationFrame(() => canvas.parentElement.classList.add("is-drawn"));
+        // The sharp flag pictures, ready before anyone zooms in on a flag.
+        setTimeout(() => loadFlags(flagSheets[1], () => this.draw()), 1500);
+      };
+      Promise.all([flagsIn, fontIn, weatherIn]).then(reveal);
+      setTimeout(reveal, 900);
       setInterval(() => this.updateSky(), 60000);
       requestAnimationFrame(() => this.fireworks());
       this.reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
@@ -908,18 +964,19 @@ const MapView = (() => {
       requestAnimationFrame(frame);
     }
 
-    // Fades the shadows in (at once if the weather came straight away).
-    showShadows(now) {
-      if (now || this.reduceMotion.matches) {
-        this.shadowsIn = 1;
+    // Brings `shadowsIn` or `windIn` up to 1: at once while the map is still
+    // hidden, or gently once it shows.
+    ease(key) {
+      if (!this.shown || this.reduceMotion.matches) {
+        this[key] = 1;
         this.draw();
         return;
       }
       const start = performance.now();
       const step = (t) => {
-        this.shadowsIn = Math.min(1, (t - start) / 700);
+        this[key] = easeOut(Math.min(1, (t - start) / 900));
         this.draw();
-        if (this.shadowsIn < 1) requestAnimationFrame(step);
+        if (this[key] < 1) requestAnimationFrame(step);
       };
       requestAnimationFrame(step);
     }
@@ -1364,34 +1421,59 @@ const MapView = (() => {
       ctx.fill(S.roadWhite);
       ctx.fillStyle = C.roadYellow;
       ctx.fill(S.roadYellow);
+      if (snow) {
+        ctx.fillStyle = "rgba(236, 240, 244, 0.8)";
+        ctx.fill(S.roadSlush);
+      }
 
-      // Parking lot
+      // Parking lot (in snow, plowed and salted: paler, the lines half
+      // buried, snow along the curb and on the wheel stops)
       ctx.fillStyle = C.concrete;
       ctx.fill(S.lotCurb);
       ctx.fillStyle = C.lot;
       ctx.fill(S.lot);
+      if (snow) {
+        ctx.fillStyle = "rgba(236, 240, 244, 0.14)";
+        ctx.fill(S.lot);
+        ctx.globalAlpha = 0.45;
+      }
       ctx.strokeStyle = C.lotLine;
       ctx.lineWidth = 0.9;
       ctx.stroke(S.lotLines);
-      ctx.fillStyle = C.concrete;
+      ctx.globalAlpha = 1;
+      if (snow) {
+        ctx.fillStyle = C.snow;
+        ctx.fill(S.snowBank);
+        ctx.strokeStyle = C.snowEdge;
+        ctx.lineWidth = Math.max(px, 0.25);
+        ctx.stroke(S.snowBank);
+      }
+      ctx.fillStyle = snow ? C.snow : C.concrete;
       ctx.fill(S.wheelStops);
       ctx.strokeStyle = C.concreteLine;
       ctx.lineWidth = Math.max(px, 0.1);
       ctx.stroke(S.wheelStops);
 
-      // Gravel beds beside the walkway (the shrubs on them come later)
+      // Gravel beds beside the walkway (the shrubs on them come later). The
+      // stones in the gravel fade in as the map zooms in.
+      const stones = snow ? 0 : clamp((scale - 2.4) / 2, 0, 1);
       ctx.fillStyle = snow ? C.snowGravel : C.gravel;
       ctx.fill(S.hedgeRock);
-      if (scale > 3 && !snow) this.drawStones(S.bedStones);
+      if (stones) {
+        ctx.globalAlpha = stones;
+        this.drawStones(S.bedStones);
+        ctx.globalAlpha = 1;
+      }
 
       // Curb and gravel rings
       ctx.fillStyle = C.concrete;
       ctx.fill(S.curb);
       ctx.fillStyle = snow ? C.snowGravel : C.gravel;
       ctx.fill(S.gravel);
-      if (scale > 3 && !snow) {
+      if (stones) {
         ctx.save();
         ctx.clip(S.gravel); // so no stone pokes out over the path
+        ctx.globalAlpha = stones;
         this.drawStones(S.ringStones);
         ctx.restore();
       }
@@ -1498,7 +1580,7 @@ const MapView = (() => {
         this.drawWreath((m.left + m.right) / 2, m.bottom - 2.3, 0.85);
       }
 
-      // Then the poles', flags' and lamp's, over the walls they cross.
+      // Then the poles', flags' and lamp's again, on the walls they cross.
       this.drawShadows(true);
 
       this.drawLight(vis);
@@ -1519,29 +1601,22 @@ const MapView = (() => {
       }
     }
 
-    // Shadows from buildShadows(): the solid things' on the ground, or the
-    // rest (`high`), which go over whatever they cross.
+    // Shadows from buildShadows(): all of them on the ground, under the walls
+    // and everything else that stands up, or (`high`) the poles', flags' and
+    // lamp's on top of those things.
     drawShadows(high) {
       const { ctx, sky } = this,
         s = this.shadows;
       if (!s || this.shadowsIn <= 0) return;
-      const a = 0.3 * sky.shadow * this.shadowsIn,
-        shade = (alpha) => `rgba(20, 24, 34, ${alpha})`;
-      ctx.fillStyle = shade(a);
+      ctx.fillStyle = `rgba(20, 24, 34, ${0.19 * sky.shadow * this.shadowsIn})`;
       if (!high) {
-        ctx.fill(s.ground);
+        ctx.fill(s.all);
         return;
       }
+      ctx.save();
+      ctx.clip(this.static.tops);
       ctx.fill(s.high);
-      ctx.fillStyle = shade(a * 0.8);
-      ctx.fill(s.cloth);
-      for (const p of s.poles) {
-        const g = ctx.createLinearGradient(...p.from, ...p.to);
-        g.addColorStop(0, shade(a));
-        g.addColorStop(1, shade(a * p.fade));
-        ctx.fillStyle = g;
-        ctx.fill(p.strip);
-      }
+      ctx.restore();
     }
 
     // The hour of the day: warm light near sunrise and sunset, and at night
@@ -1713,8 +1788,11 @@ const MapView = (() => {
       }
       // The lamp post, from above: its footing (painted yellow), the post, and
       // the arm reaching out toward the parking lot with the light on its end.
+      // The arm and light are high over two engraved bricks, so they fade
+      // away as the names come into view, leaving the footing.
       const L = Plan.lamp,
-        armEnd = L.y + LAMP_ARM;
+        armEnd = L.y + LAMP_ARM,
+        overhead = 1 - clamp((scale - DETAIL_FROM) / (DETAIL_FULL - DETAIL_FROM), 0, 1);
       ctx.beginPath();
       ctx.arc(L.x, L.y, L.footing, 0, 2 * Math.PI);
       ctx.fillStyle = C.lampFooting;
@@ -1722,17 +1800,22 @@ const MapView = (() => {
       ctx.strokeStyle = C.lampFootingEdge;
       ctx.lineWidth = Math.max(1 / scale, 0.12);
       ctx.stroke();
-      ctx.strokeStyle = C.lampPost;
-      ctx.lineWidth = 0.45;
-      ctx.beginPath();
-      ctx.moveTo(L.x, L.y);
-      ctx.lineTo(L.x, armEnd);
-      ctx.stroke();
+      if (overhead > 0) {
+        ctx.globalAlpha = overhead;
+        ctx.strokeStyle = C.lampPost;
+        ctx.lineWidth = 0.45;
+        ctx.beginPath();
+        ctx.moveTo(L.x, L.y);
+        ctx.lineTo(L.x, armEnd);
+        ctx.stroke();
+        roundedRectPath(ctx, L.x - 0.8, armEnd, 1.6, 2.6, 0.35);
+        ctx.fillStyle = C.lampPost;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
       ctx.beginPath();
       ctx.arc(L.x, L.y, 0.55, 0, 2 * Math.PI);
       ctx.fillStyle = C.lampPost;
-      ctx.fill();
-      roundedRectPath(ctx, L.x - 0.8, armEnd, 1.6, 2.6, 0.35);
       ctx.fill();
 
       // Little flags, drawn upright on screen whichever way the map is turned.
@@ -1743,9 +1826,9 @@ const MapView = (() => {
       const fh = FLAG * scale, // in screen px
         sky = this.sky,
         across = Math.sin(((sky.windTo * Math.PI) / 180) + this.view.angle),
-        look = { dir: across < -0.1 ? -1 : 1, breeze: sky.breeze },
-        // Blowing up or down the screen, the flags are seen more edge-on.
-        span = 0.45 + 0.55 * Math.abs(across);
+        look = { dir: across < -0.1 ? -1 : 1, breeze: sky.breeze * this.windIn },
+        // Blowing up or down the screen, the flags are seen a little edge-on.
+        span = 0.8 + 0.2 * Math.abs(across);
       for (const f of Plan.flagpoles) {
         // The tall pole has room to lower both its flags to half-staff and
         // still show pole above and below them.
@@ -1793,9 +1876,9 @@ const MapView = (() => {
           const t = Math.min(1, Math.max(0, (scale - a) / (b - a)));
           return t * t * (3 - 2 * t);
         },
-        full = ramp(FULL_AT - 2, FULL_AT + 0.5),
-        names = ramp(NAMES_AT - 2, NAMES_AT + 0.5) * (1 - ramp(FULL_AT - 3, FULL_AT - 0.5)),
-        bars = 1 - ramp(NAMES_AT - 2.5, NAMES_AT);
+        full = ramp(FULL_AT - 3.5, FULL_AT + 0.5),
+        names = ramp(NAMES_AT - 2.5, NAMES_AT + 0.5) * (1 - ramp(FULL_AT - 4, FULL_AT - 0.5)),
+        bars = 1 - ramp(NAMES_AT - 3, NAMES_AT);
       for (const b of this.visibleNamed) {
         const fit = this.fitText(b),
           { size, squeeze, lines } = fit.full,
