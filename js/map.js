@@ -1608,7 +1608,7 @@ const MapView = (() => {
       const { ctx, sky } = this,
         s = this.shadows;
       if (!s || this.shadowsIn <= 0) return;
-      ctx.fillStyle = `rgba(20, 24, 34, ${0.19 * sky.shadow * this.shadowsIn})`;
+      ctx.fillStyle = `rgba(20, 24, 34, ${0.12 * sky.shadow * this.shadowsIn})`;
       if (!high) {
         ctx.fill(s.all);
         return;
