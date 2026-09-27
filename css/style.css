@@ -442,8 +442,8 @@ select {
   white-space: nowrap;
 }
 
-/* By the name of the fallen, the Gold Star service banner, and of the
-   missing, the POW/MIA flag (from the flag sheet). */
+/* By the name of the fallen, a gold star, and of the missing, the POW/MIA
+   flag (from the flag sheet). */
 .honor {
   display: inline-flex;
   flex: none;
@@ -456,10 +456,10 @@ select {
   margin-left: 0;
 }
 
-.honor-banner {
-  width: 12px;
-  height: 16px;
-  filter: drop-shadow(0 0.5px 0.5px rgb(0 0 0 / 0.25));
+.honor-star {
+  width: 17px;
+  height: 17px;
+  filter: drop-shadow(0 0.5px 0.5px rgb(0 0 0 / 0.2));
 }
 
 .honor-flag {

@@ -77,6 +77,7 @@ const MapView = (() => {
   // everything else at every zoom and look the same on every screen. (They only
   // ever reach over the path and lawn, never the bricks.)
   const FLAG = 4.5; // flag height, in brick units
+  const MAIN_POLE = 3.1; // the tall pole, in heights of its flag (Plan.frame's top reaches its ball)
 
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const JOINT = (px) => clamp(1.4 * px, 0.06, 0.16); // grout line width, in brick units
@@ -629,8 +630,19 @@ const MapView = (() => {
     return out;
   }
 
-  // Heights (brick units: 1 is 4 inches) of the things that cast shadows.
-  const HEIGHT = { wall: 7.5, pillar: 11, monument: 13, hedge: 9, bench: 5, pole: 54, mainPole: 84 };
+  // Heights (brick units: 1 is 4 inches) of the things that cast shadows, as
+  // measured in Street View: the walls stand 2½ feet, the flagpoles about 23
+  // and 40, and the lamp about 23.
+  const HEIGHT = { wall: 7.5, pillar: 10, monument: 12, hedge: 9, bench: 5, pole: 69, mainPole: 121, lamp: 70 };
+  // The real flags, for their shadows: [hoist, fly, top below the pole's
+  // top]. A 5 by 8 foot US flag over a 3 by 5 POW/MIA flag, and 4 by 6 on the
+  // other poles.
+  const REAL_FLAG = { us: [15, 24, 7], pow: [9, 15], side: [12, 18, 4.5] };
+  const LAMP_ARM = 3.2; // from the lamp post to the light
+  // How far a shadow reaches for each unit of height: true to the sun while
+  // it's high (above about 45°), then held under 1.1, so early and late
+  // shadows don't stretch across the plaza.
+  const reach = (cot) => (cot < 0.8 ? cot : 0.8 + 0.3 * Math.tanh((cot - 0.8) / 0.3));
 
   const rectPts = (x0, y0, x1, y1) => [
     [x0, y0],
@@ -657,37 +669,87 @@ const MapView = (() => {
   }
 
   // Shadows for the sun where it is, as an aerial photo shows them: each
-  // raised outline swept away from the sun (at most 1.2 times its height, so
-  // a low sun doesn't throw them across the map), and each flagpole a thin
-  // line (at most three quarters of its height) with a patch where its flag
-  // flies. Built again as the sun moves.
+  // raised outline swept away from the sun, each flagpole a narrowing strip
+  // with its flags rippling beside it, and the lamp.
+  // Solid things share one outline, so where their shadows cross they don't
+  // darken twice. Built again as the sun moves.
   function buildShadows(S, sky) {
     const { altitude } = sky.sun;
     if (sky.shadow <= 0.02 || altitude < 2) return null;
     const a = (sky.sunOnMap * Math.PI) / 180,
-      cot = 1 / Math.tan((altitude * Math.PI) / 180),
-      dir = [-Math.sin(a), Math.cos(a)],
-      v = dir.map((c) => c * Math.min(1.2, cot)), // shadow per unit of height
-      vp = dir.map((c) => c * Math.min(0.75, cot)), // the same for the poles
-      fill = new Path2D(),
-      flags = new Path2D(),
-      lines = new Path2D();
-    for (const { h, pts } of S.raised)
-      polygon(fill, hull([...pts, ...pts.map(([x, y]) => [x + v[0] * h, y + v[1] * h])]));
+      k = reach(1 / Math.tan((altitude * Math.PI) / 180)),
+      sx = -Math.sin(a) * k,
+      sy = Math.cos(a) * k,
+      // Where the shadow of a point z up falls.
+      at = (x, y, z) => [x + sx * z, y + sy * z],
+      // Across the shadows.
+      nx = -Math.cos(a),
+      ny = -Math.sin(a),
+      path = new Path2D(),
+      cloth = new Path2D(); // the flags, which let some light through
+    for (const { h, pts } of S.raised) polygon(path, hull([...pts, ...pts.map(([x, y]) => at(x, y, h))]));
+
+    // A pole, `w0` wide at the foot and `w1` at the top. A thin pole's
+    // shadow blurs away along its length (the sun isn't a point), so each
+    // is drawn on its own, fading.
+    const poles = [];
+    const pole = (x, y, h, w0, w1) => {
+      const [tx, ty] = at(x, y, h),
+        strip = new Path2D();
+      polygon(strip, [
+        [x + (nx * w0) / 2, y + (ny * w0) / 2],
+        [tx + (nx * w1) / 2, ty + (ny * w1) / 2],
+        [tx - (nx * w1) / 2, ty - (ny * w1) / 2],
+        [x - (nx * w0) / 2, y - (ny * w0) / 2],
+      ]);
+      poles.push({ strip, from: [x, y], to: [tx, ty], fade: Math.max(0.25, 1 - (h * k) / 170) });
+    };
+    // A flag flying downwind from its pole, top edge `top` up: rippling
+    // across the wind, and on a still day sagging at its loose end, as drawn.
     const wind = [Math.sin((sky.windTo * Math.PI) / 180), -Math.cos((sky.windTo * Math.PI) / 180)],
-      fh = FLAG * 0.9,
-      fw = fh * FLAG_RATIO;
+      b = sky.breeze;
+    const flag = (x, y, top, hoist, fly) => {
+      const n = 14,
+        amp = hoist * (0.05 + 0.06 * b),
+        droop = hoist * 0.55 * (1 - b) ** 2,
+        upper = [],
+        lower = [];
+      for (let i = 0; i <= n; i++) {
+        const t = i / n,
+          ripple = amp * Math.sin(t * 5.5 + 0.6) * t,
+          sag = droop * t * t,
+          px = x + wind[0] * t * fly - wind[1] * ripple,
+          py = y + wind[1] * t * fly + wind[0] * ripple;
+        upper.push(at(px, py, top - sag));
+        lower.push(at(px, py, top - sag - hoist));
+      }
+      // Strip by strip, so a flag seen edge-on can't fold over itself.
+      for (let i = 0; i < n; i++) polygon(cloth, hull([upper[i], upper[i + 1], lower[i + 1], lower[i]]));
+    };
     for (const f of Plan.flagpoles) {
-      const h = f.main ? HEIGHT.mainPole : HEIGHT.pole,
-        top = f.main && sky.halfStaff ? h * 0.6 : h,
-        at = (z, out) => [f.x + vp[0] * z + wind[0] * out, f.y + vp[1] * z + wind[1] * out];
-      lines.moveTo(f.x, f.y);
-      lines.lineTo(...at(h, 0));
-      const flag = (z0, z1, len) => polygon(flags, [at(z1, 0), at(z1, len), at(z0, len), at(z0, 0)]);
-      flag(top - fh, top, fw);
-      if (f.main) flag(top - 2 * fh - 0.8, top - fh - 0.8, fw * 0.85);
+      const h = f.main ? HEIGHT.mainPole : HEIGHT.pole;
+      pole(f.x, f.y, h, f.main ? 1.5 : 1.05, f.main ? 0.6 : 0.5);
+      if (f.main) {
+        const [hoist, fly, below] = REAL_FLAG.us,
+          [ph, pf] = REAL_FLAG.pow,
+          // At half-staff, the flag hangs halfway down.
+          top = sky.halfStaff ? (h + hoist) / 2 : h - below;
+        flag(f.x, f.y, top, hoist, fly);
+        flag(f.x, f.y, top - hoist - 1, ph, pf);
+      } else {
+        const [hoist, fly, below] = REAL_FLAG.side;
+        flag(f.x, f.y, h - below, hoist, fly);
+      }
     }
-    return { fill, flags, lines };
+
+    // The lamp post, its arm reaching toward the parking lot, and the light.
+    const L = Plan.lamp,
+      lh = HEIGHT.lamp;
+    pole(L.x, L.y, lh, 1.0, 0.75);
+    polygon(path, hull(rectPts(L.x - 0.22, L.y, L.x + 0.22, L.y + LAMP_ARM).map(([x, y]) => at(x, y, lh - 0.3))));
+    const head = rectPts(L.x - 0.8, L.y + LAMP_ARM, L.x + 0.8, L.y + LAMP_ARM + 2.6);
+    polygon(path, hull([...head.map(([x, y]) => at(x, y, lh - 0.3)), ...head.map(([x, y]) => at(x, y, lh - 1.6))]));
+    return { path, cloth, poles };
   }
 
   // Groups the field pavers into tiles so only visible ones get drawn.
@@ -744,9 +806,15 @@ const MapView = (() => {
       loadFlags(flagSheets[0], () => this.draw());
       whenFontLoads?.then(() => this.draw());
       // The plaza as it is now: sun, season, weather and calendar, checked
-      // again each minute.
+      // again each minute. Clouds soften the shadows, so they wait for the
+      // weather and then fade in, instead of showing one way and changing.
       this.sky = Sky.state();
-      Sky.fetchWeather().then(() => this.updateSky());
+      this.shadowsIn = 0;
+      const asked = performance.now();
+      Sky.fetchWeather().then(() => {
+        this.updateSky();
+        this.showShadows(performance.now() - asked < 150);
+      });
       setInterval(() => this.updateSky(), 60000);
       requestAnimationFrame(() => this.fireworks());
       this.reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
@@ -756,12 +824,15 @@ const MapView = (() => {
       this.resize();
     }
 
-    // On the evening of the Fourth of July, a few minutes of fireworks over
-    // the map (not with reduced motion). A separate layer, so the map itself
-    // isn't redrawn for them.
+    // On the Fourth of July, fireworks over the map (not with reduced
+    // motion): half a minute by day, and a few minutes once it's dark. A
+    // separate layer, so the map itself isn't redrawn for them.
     fireworks() {
-      const sky = this.sky;
-      if (this.fx || !sky.fourth || sky.sun.altitude > -4 || this.reduceMotion.matches) return;
+      const sky = this.sky,
+        night = sky.sun.altitude < -4,
+        shown = (this.fxShown ||= new Set());
+      if (this.fx || !sky.fourth || this.reduceMotion.matches || shown.has(night)) return;
+      shown.add(night);
       const c = document.createElement("canvas");
       c.setAttribute("aria-hidden", "true");
       c.style.cssText = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:1";
@@ -769,8 +840,10 @@ const MapView = (() => {
       this.fx = c;
       const g = c.getContext("2d"),
         sparks = [],
-        colors = ["#ff5a6a", "#ffffff", "#6f9bff", "#ffd36b"],
-        stopAt = performance.now() + 3 * 60000;
+        // By day, deeper colours with a shadow under each streak, to show on
+        // the light ground.
+        colors = night ? ["#ff5a6a", "#ffffff", "#6f9bff", "#ffd36b"] : ["#d9243a", "#ffffff", "#2d5fd6", "#f2b632"],
+        stopAt = performance.now() + (night ? 3 * 60000 : 30000);
       let last = 0,
         next = 0;
       const frame = (t) => {
@@ -810,22 +883,49 @@ const MapView = (() => {
             sparks.splice(i, 1);
             continue;
           }
+          const x0 = p.x - p.vx * 0.06,
+            y0 = p.y - p.vy * 0.06;
           g.globalAlpha = Math.min(1, p.life * 1.3);
+          if (!night) {
+            g.strokeStyle = "rgba(20, 24, 34, 0.35)";
+            g.lineWidth = 2.6;
+            g.beginPath();
+            g.moveTo(x0 + 2, y0 + 3);
+            g.lineTo(p.x + 2, p.y + 3);
+            g.stroke();
+          }
           g.strokeStyle = p.color;
           g.lineWidth = 2;
           g.beginPath();
-          g.moveTo(p.x - p.vx * 0.06, p.y - p.vy * 0.06);
+          g.moveTo(x0, y0);
           g.lineTo(p.x, p.y);
           g.stroke();
         }
         g.globalAlpha = 1;
         if (t > stopAt && !sparks.length) {
           c.remove();
+          this.fx = null;
           return;
         }
         requestAnimationFrame(frame);
       };
       requestAnimationFrame(frame);
+    }
+
+    // Fades the shadows in (at once if the weather came straight away).
+    showShadows(now) {
+      if (now || this.reduceMotion.matches) {
+        this.shadowsIn = 1;
+        this.draw();
+        return;
+      }
+      const start = performance.now();
+      const step = (t) => {
+        this.shadowsIn = Math.min(1, (t - start) / 700);
+        this.draw();
+        if (this.shadowsIn < 1) requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
     }
 
     updateSky() {
@@ -967,6 +1067,19 @@ const MapView = (() => {
       const [hx, hy] = this.screenToWorld(...focus, this.clampView({ ...v }, true)),
         pull = (d) => (Math.sign(d) * resist(Math.abs(d) * v.scale, OVERSHOOT)) / v.scale;
       return this.placeWorldAt(v, [hx + pull(target[0] - hx), hy + pull(target[1] - hy)], focus);
+    }
+
+    // The zoom soften() gives way to, worked back: so a pinch that starts
+    // while the map is still springing back carries on from where it is.
+    unsoften(v) {
+      const fitScale = this.fitScale(v.angle),
+        focus = this.focusPoint(),
+        target = this.screenToWorld(...focus, v),
+        give = (x) => (2 * ZOOM_GIVE * x) / (ZOOM_GIVE - Math.min(x, ZOOM_GIVE * 0.98)),
+        out = { ...v };
+      if (v.scale < fitScale) out.scale = fitScale * Math.exp(-give(Math.log(fitScale / v.scale)));
+      if (v.scale > MAX_SCALE) out.scale = MAX_SCALE * Math.exp(give(Math.log(v.scale / MAX_SCALE)));
+      return this.placeWorldAt(out, target, focus);
     }
 
     settle() {
@@ -1337,15 +1450,20 @@ const MapView = (() => {
 
       // Shadows, while the sun's up, under everything that stands up.
       if (this.shadows === undefined) this.shadows = buildShadows(S, sky);
-      if (this.shadows) {
-        const a = 0.3 * sky.shadow;
-        ctx.fillStyle = `rgba(20, 24, 34, ${a})`;
-        ctx.fill(this.shadows.fill);
-        ctx.fillStyle = `rgba(20, 24, 34, ${a * 0.65})`;
-        ctx.fill(this.shadows.flags);
-        ctx.strokeStyle = `rgba(20, 24, 34, ${a})`;
-        ctx.lineWidth = 0.55;
-        ctx.stroke(this.shadows.lines);
+      if (this.shadows && this.shadowsIn > 0) {
+        const a = 0.42 * sky.shadow * this.shadowsIn,
+          shade = (alpha) => `rgba(20, 24, 34, ${alpha})`;
+        ctx.fillStyle = shade(a);
+        ctx.fill(this.shadows.path);
+        ctx.fillStyle = shade(a * 0.8);
+        ctx.fill(this.shadows.cloth);
+        for (const p of this.shadows.poles) {
+          const g = ctx.createLinearGradient(...p.from, ...p.to);
+          g.addColorStop(0, shade(a));
+          g.addColorStop(1, shade(a * p.fade));
+          ctx.fillStyle = g;
+          ctx.fill(p.strip);
+        }
       }
 
       // The shrubs on their beds, and the benches
@@ -1585,7 +1703,7 @@ const MapView = (() => {
       // The lamp post, from above: its footing (painted yellow), the post, and
       // the arm reaching out toward the parking lot with the light on its end.
       const L = Plan.lamp,
-        armEnd = L.y + 3.2;
+        armEnd = L.y + LAMP_ARM;
       ctx.beginPath();
       ctx.arc(L.x, L.y, L.footing, 0, 2 * Math.PI);
       ctx.fillStyle = C.lampFooting;
@@ -1618,10 +1736,12 @@ const MapView = (() => {
         // Blowing up or down the screen, the flags are seen more edge-on.
         span = 0.45 + 0.55 * Math.abs(across);
       for (const f of Plan.flagpoles) {
+        // The tall pole has room to lower both its flags to half-staff and
+        // still show pole above and below them.
         const [x, y] = this.worldToScreen(f.x, f.y),
           height = f.main ? fh * 1.2 : fh,
-          poleTop = y - height * (f.main ? 2.5 : 2.1),
-          top = f.main && sky.halfStaff ? poleTop + (y - poleTop) * 0.3 : poleTop,
+          poleTop = y - height * (f.main ? MAIN_POLE : 2.1),
+          top = f.main && sky.halfStaff ? poleTop + height * 0.85 : poleTop,
           fw = height * FLAG_RATIO * span,
           redraw = () => this.draw();
         // A satin aluminum pole: a darker edge with a bright line down it.
@@ -1643,7 +1763,8 @@ const MapView = (() => {
         ctx.arc(x, poleTop - Math.max(1.2, height * 0.07), Math.max(1.3, height * 0.09), 0, 2 * Math.PI);
         ctx.fill();
         drawFlag(ctx, f.flag, x + 0.6 * look.dir, top, fw, height, dpr, redraw, look);
-        if (f.main) drawFlag(ctx, "pow", x + 0.6 * look.dir, top + height + 1, fw * 0.85, height * 0.85, dpr, redraw, look);
+        if (f.main)
+          drawFlag(ctx, "pow", x + 0.6 * look.dir, top + height * 1.06, fw * 0.85, height * 0.85, dpr, redraw, look);
       }
       this.worldTransform();
     }
@@ -1820,7 +1941,7 @@ const MapView = (() => {
         this.pinch = {
           dist: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1,
           mid: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2],
-          view: { ...(this.raw || this.view) },
+          view: this.raw ? { ...this.raw } : this.unsoften(this.view),
         };
         this.isFit = false;
         this.cb.onUserMove?.();
@@ -1933,7 +2054,7 @@ const MapView = (() => {
         this.stop();
         clearTimeout(this.wheelTimer);
         this.wheelRaw = null;
-        this.gestureFrom = { view: { ...this.view }, at: this.pos(e) };
+        this.gestureFrom = { view: this.unsoften(this.view), at: this.pos(e) };
       } else if (phase === "change" && this.gestureFrom) {
         const { view, at } = this.gestureFrom,
           anchor = this.screenToWorld(...at, view),
@@ -1957,7 +2078,7 @@ const MapView = (() => {
       else if (e.deltaMode === 2) dy *= this.size.h;
       const factor = Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0025));
       const [x, y] = this.pos(e),
-        from = this.wheelRaw || { ...this.view },
+        from = this.wheelRaw || this.unsoften(this.view),
         anchor = this.screenToWorld(x, y, from),
         fitScale = this.fitScale(),
         v = { ...from, scale: clamp(from.scale * factor, fitScale * 0.3, MAX_SCALE * 3) };
@@ -1966,12 +2087,16 @@ const MapView = (() => {
       this.isFit = false;
       this.draw();
       clearTimeout(this.wheelTimer);
-      // A wheel can't say when the fingers lift, so it springs back as soon
-      // as the scrolling stops.
-      this.wheelTimer = setTimeout(() => {
-        this.wheelRaw = null;
-        this.settle();
-      }, 110);
+      // A wheel can't say when the fingers lift, so it springs back once the
+      // scrolling stops. A trackpad pinch in Chrome comes as a wheel with
+      // ctrl held, so fingers resting mid-pinch get a longer pause first.
+      this.wheelTimer = setTimeout(
+        () => {
+          this.wheelRaw = null;
+          this.settle();
+        },
+        e.ctrlKey ? 260 : 110,
+      );
       this.cb.onUserMove?.();
     }
 

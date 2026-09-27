@@ -209,8 +209,8 @@ const Sky = (() => {
       light,
       // Warm light for the hour after sunrise and before sunset.
       golden: s.altitude > -2 && s.altitude < 8 ? 1 - Math.abs(s.altitude - 3) / 5 : 0,
-      // How dark shadows are: none at night or under full cloud.
-      shadow: Math.max(0, Math.min(1, (s.altitude - 2) / 10)) * (1 - 0.85 * cloud),
+      // How dark shadows are: none at night, and softer under cloud.
+      shadow: Math.max(0, Math.min(1, (s.altitude - 2) / 10)) * (1 - 0.35 * cloud),
       lawn: lawn(d),
       snow: !!w?.snow,
       // Where the sun is, turned to the map (0° is the map's top, clockwise).

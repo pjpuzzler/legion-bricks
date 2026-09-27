@@ -95,23 +95,21 @@ const App = (() => {
     });
   }
 
-  // By the name of the fallen, the Gold Star service banner (a gold star on
-  // white, bordered red), and of the missing, the POW/MIA flag. Their meaning
-  // shows on hover and to screen readers.
+  // By the name of the fallen, a gold star (the star of a Gold Star family's
+  // banner), and of the missing, the POW/MIA flag. Their meaning shows on
+  // hover and to screen readers.
   function honorMark(key) {
     const { name } = Model.HONORS[key];
     let mark;
     if (key === "kia")
       mark = svg(
         "svg",
-        { viewBox: "0 0 12 16", class: "honor-banner", "aria-hidden": "true" },
-        svg("rect", { x: 0, y: 0, width: 12, height: 16, rx: 0.8, fill: "#b3202e" }),
-        svg("rect", { x: 2, y: 2, width: 8, height: 12, fill: "#fff" }),
+        { viewBox: "0 0 16 16", class: "honor-star", "aria-hidden": "true" },
         svg("path", {
-          d: "M6 4.6l.93 2.1 2.28.2-1.73 1.5.52 2.24L6 9.47l-2 1.17.52-2.24-1.73-1.5 2.28-.2Z",
-          fill: "#d9a92b",
-          stroke: "#27407a",
-          "stroke-width": 0.45,
+          d: "M8 1.25L9.73 6.16L14.94 6.29L10.81 9.46L12.29 14.46L8 11.5L3.71 14.46L5.19 9.46L1.06 6.29L6.27 6.16Z",
+          fill: "#e0ae2e",
+          stroke: "#9a7316",
+          "stroke-width": 0.9,
           "stroke-linejoin": "round",
         }),
       );
