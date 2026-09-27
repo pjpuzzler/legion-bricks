@@ -29,8 +29,8 @@ const Editor = (() => {
   const selected = () => (S.selectedId == null ? null : byId(S.selectedId));
   const copy = (b) => ({ ...Model.toRecord(b), id: b.id, first: b.first, last: b.last, lines: [...b.lines] });
   const fromCopy = (r) => Model.fromRecord(r, r.id);
-  const textKey = (b) => JSON.stringify([b.first, b.last, b.lines, b.split, b.color, b.emblem]);
-  const tidy = (s) => s.replace(/\s+/g, " ").trim();
+  const textKey = (b) => JSON.stringify([b.first, b.last, b.lines, b.split, b.flip, b.squeeze, b.color, b.emblem]);
+  const tidy = (s) => s.replace(/[^\S ]/g, " ").trim(); // (a gap of several spaces is kept)
   // Bricks are engraved in capitals, but a typed "Mc" (as in McCOOL) is kept.
   const engraved = (s) =>
     tidy(s).replace(/\S+/g, (w) => (/^Mc./.test(w) ? "Mc" + w.slice(2).toUpperCase() : w.toUpperCase()));
@@ -504,9 +504,16 @@ const Editor = (() => {
         h("option", { value: "" }, "On one line"),
         h("option", { value: "split" }, "On two lines"),
       ),
+      flip: h(
+        "select",
+        { name: "flip" },
+        h("option", { value: "" }, "The usual way"),
+        h("option", { value: "flip" }, "The other way round"),
+      ),
     };
     f.color.value = b.color;
     f.split.value = b.split ? "split" : "";
+    f.flip.value = b.flip ? "flip" : "";
 
     const id = b.id;
     const onText = (key) => () =>
@@ -524,6 +531,7 @@ const Editor = (() => {
     f.emblem.addEventListener("change", () => change(() => (byId(id).emblem = f.emblem.value)));
     f.color.addEventListener("change", () => change(() => (byId(id).color = f.color.value)));
     f.split.addEventListener("change", () => change(() => (byId(id).split = f.split.value === "split")));
+    f.flip.addEventListener("change", () => change(() => (byId(id).flip = f.flip.value === "flip")));
     for (const el of [f.first, f.last, ...f.lines])
       el.addEventListener("keydown", (e) => {
         if (e.key !== "Enter") return;
@@ -550,7 +558,7 @@ const Editor = (() => {
       ),
       h("div", { class: "form-preview" }),
       h("div", { class: "field-row" }, field("First name(s)", f.first), field("Last name", f.last)),
-      h("div", { class: "field-row" }, field("Name", f.split)),
+      h("div", { class: "field-row" }, field("Name", f.split), field("Laid", f.flip)),
       field("Line 2", f.lines[0]),
       field("Line 3", f.lines[1]),
       field("Line 4 (if any)", f.lines[2]),
@@ -584,6 +592,7 @@ const Editor = (() => {
     f.emblem.value = b.emblem;
     f.color.value = b.color;
     f.split.value = b.split ? "split" : "";
+    f.flip.value = b.flip ? "flip" : "";
 
     form.querySelector(".form-preview").replaceChildren(app.replica(b));
 

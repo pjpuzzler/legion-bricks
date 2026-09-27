@@ -67,7 +67,9 @@ const App = (() => {
 
   function svg(tag, attrs = {}, ...children) {
     const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
-    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+    for (const [k, v] of Object.entries(attrs))
+      if (k === "xml:space") node.setAttributeNS("http://www.w3.org/XML/1998/namespace", k, v);
+      else node.setAttribute(k, v);
     node.append(...children.flat(Infinity));
     return node;
   }
@@ -312,18 +314,26 @@ const App = (() => {
   // on a 200 × 100 brick. A pale copy just below each line catches the light
   // like the lower edge of the cut.
   function replica(b) {
-    const lines = Model.engraving(b).map((line) => line || " "),
-      { size, baselines } = MapView.engrave(lines),
-      engraving = (cls, dy) =>
-        svg(
-          "g",
-          { class: cls, "font-size": (size * 100).toFixed(2), "text-anchor": "middle" },
-          lines.map((line, i) => svg("text", { x: 100, y: (baselines[i] * 100 + dy).toFixed(2) }, line)),
-        );
+    const lines = Model.engraving(b),
+      face = svg("svg", { viewBox: "0 0 200 100", "aria-hidden": "true" }),
+      lay = () => {
+        const { size, squeeze, lines: laid } = MapView.engrave(lines, b.squeeze),
+          engraving = (cls, dy) =>
+            svg(
+              "g",
+              { class: cls, "font-size": (size * 100).toFixed(2), transform: `translate(100 0) scale(${squeeze.toFixed(4)} 1)` },
+              laid.map((l) =>
+                svg("text", { x: (l.start * 100).toFixed(2), y: (l.baseline * 100 + dy).toFixed(2), "xml:space": "preserve" }, l.text),
+              ),
+            );
+        face.replaceChildren(engraving("replica-light", 0.9), engraving("replica-ink", 0));
+      };
+    lay();
+    MapView.whenFontLoads?.then(lay); // measured again with the real font
     return h(
       "div",
       { class: `replica${b.color === "gray" ? " is-gray" : ""}`, role: "img", "aria-label": lines.join(", ") },
-      svg("svg", { viewBox: "0 0 200 100", "aria-hidden": "true" }, engraving("replica-light", 0.9), engraving("replica-ink", 0)),
+      face,
     );
   }
 

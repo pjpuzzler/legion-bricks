@@ -52,14 +52,19 @@ const Model = (() => {
     Iraq: "IRAQ IRAQI",
   };
 
-  // Text is kept exactly as typed (so "McCOOL" stays McCOOL), just tidied up.
+  // Text is kept exactly as typed (so "McCOOL" stays McCOOL, and a wide gap
+  // on a brick stays as its spaces), just trimmed.
   const clean = (s) =>
     String(s ?? "")
-      .replace(/\s+/g, " ")
+      .replace(/[^\S ]/g, " ")
       .trim();
 
   // "U S ARMY" and "U.S. ARMY" read as "US ARMY" for matching.
-  const matchText = (s) => ` ${clean(s).toUpperCase().replace(/\bU\.? ?S\.?(?= |$)/g, "US")} `;
+  const matchText = (s) =>
+    ` ${clean(s)
+      .replace(/ +/g, " ")
+      .toUpperCase()
+      .replace(/\bU\.? ?S\.?(?= |$)/g, "US")} `;
 
   function emblemsFor(brick) {
     if (brick.emblem === "none") return [];
@@ -118,6 +123,8 @@ const Model = (() => {
       last: clean(r.last),
       lines,
       split: r.split === true,
+      flip: r.flip === true,
+      squeeze: typeof r.squeeze === "number" && r.squeeze > 0 ? r.squeeze : 0,
       at: r.at ? String(r.at).trim() : "",
       color: r.color === "gray" ? "gray" : "",
       emblem: r.emblem ? String(r.emblem).trim().toLowerCase() : "",
@@ -129,6 +136,8 @@ const Model = (() => {
     const r = { first: b.first, last: b.last };
     if (b.lines.length) r.lines = [...b.lines];
     if (b.split) r.split = true;
+    if (b.flip) r.flip = true;
+    if (b.squeeze) r.squeeze = b.squeeze;
     if (b.at) r.at = b.at;
     if (b.color) r.color = b.color;
     if (b.emblem) r.emblem = b.emblem;
@@ -146,6 +155,11 @@ const Model = (() => {
  *   first, last  the name as engraved (the last name is used for sorting)
  *   lines        the other engraved lines, top to bottom
  *   split        true if the name is engraved on two lines, first name on top
+ *   flip         true if the text is turned round from the usual (bricks lying
+ *                across the map read from the entrance side, ones running up
+ *                and down it from their right)
+ *   squeeze      how narrow the engraver made the letters (1 is normal), only
+ *                where it isn't what the usual layout works out
  *   at           its spot on the map as "row-col"; leave it out if not placed yet
  *   color        "gray" for the gray bricks
  *   emblem       only to override the emblem read from the text: "navy", "none"...

@@ -5,3 +5,7 @@ Find an engraved brick in the memorial plaza at American Legion Post 779
 monument, type a name, and a red pin shows where the brick is.
 
 https://pjpuzzler.github.io/legion-bricks/
+
+The lettering on the bricks is Brick Sans (fonts/), a cut-down copy of
+Liberation Sans Bold with the engraver's wider word spaces, under the SIL Open
+Font License (fonts/OFL.txt).

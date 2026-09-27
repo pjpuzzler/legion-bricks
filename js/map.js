@@ -46,11 +46,10 @@ const MapView = (() => {
     targetSwap: "rgba(245, 158, 11, 0.6)",
     ghost: "rgba(236, 195, 137, 0.85)",
   };
-  // The engraving is a condensed sans like Helvetica Condensed Bold. Apple
-  // devices have that font and Android has Roboto Condensed. Anything else gets
-  // a normal width font, so the text just comes out a little smaller.
-  const FONT =
-    '"HelveticaNeue-CondensedBold", "Helvetica Neue", "Roboto Condensed", sans-serif-condensed, "Arial Narrow", Helvetica, Arial, sans-serif';
+  // The lettering on the bricks is Liberation Sans Bold, shipped as Brick Sans
+  // with the engraver's wider word spaces (fonts/, and --font-engraved in the
+  // stylesheet).
+  const FONT = '"Brick Sans", Arial, Helvetica, sans-serif';
   const MAX_SCALE = 110; // screen px per brick unit
   const PAN_ROOM = 16; // how far past the plaza's edges you can move once zoomed in
   const OVERSHOOT = 40; // how far (screen px) a drag can pull the map past its limits
@@ -75,26 +74,58 @@ const MapView = (() => {
 
   function useFont(ctx, px) {
     ctx.font = `700 ${px}px ${FONT}`;
-    if ("fontStretch" in ctx) ctx.fontStretch = "condensed";
   }
 
   // Width of a line of brick text, per 1px of font size.
   const measurer = document.createElement("canvas").getContext("2d");
   useFont(measurer, 100);
   const textWidth = (s) => Math.max(1, measurer.measureText(s).width) / 100;
-
-  // How the lines sit on a brick, measured off the real ones: one size for
-  // every line, the longest about 90% of the brick's length, capitals about a
-  // fifth of its width, and the block centred. For a 2 × 1 brick, gives the
-  // font size and each line's baseline, down from the top edge.
-  const CAP = 0.72, // height of the capitals, per unit of font size
-    PITCH = 1.1; // line spacing, per unit of font size
-  function engrave(lines) {
-    const n = lines.length,
-      size = Math.min(1.8 / Math.max(...lines.map(textWidth)), 0.28, 0.76 / ((n - 1) * PITCH + CAP)),
-      block = ((n - 1) * PITCH + CAP) * size;
-    return { size, baselines: lines.map((_, i) => 0.5 - block / 2 + (CAP + i * PITCH) * size) };
+  // Where a line's ink starts and ends, per 1px of font size, from where
+  // it's drawn (left aligned).
+  function inkSpan(s) {
+    if (!s.trim()) return [0, 0];
+    const m = measurer.measureText(s);
+    if (m.actualBoundingBoxRight == null) return [0, m.width / 100];
+    return [-m.actualBoundingBoxLeft / 100, m.actualBoundingBoxRight / 100];
   }
+
+  // How the lines sit on a 2 × 1 brick, measured off the real ones: capitals
+  // 0.156 tall, lines 0.243 apart, the block centred, and each line centred.
+  // When the longest line would be wider than 1.85, the engraver squeezed
+  // every line of that brick by the same amount to fit, but never stretched
+  // short ones. A brick can say how much it was squeezed (squeeze), where
+  // that's different. Gives the font size, the squeeze and each line's
+  // baseline (down from the top edge) and start (from the middle, before
+  // squeezing).
+  const CAP_EM = 0.688, // height of the capitals, per unit of font size
+    LETTER = 0.156,
+    PITCH = 0.243,
+    FIT = 1.85,
+    SIZE = LETTER / CAP_EM;
+  function engrave(lines, squeeze) {
+    const n = lines.length,
+      spans = lines.map(inkSpan),
+      longest = Math.max(...spans.map(([a, b]) => b - a)) * SIZE,
+      top = 0.5 - ((n - 1) * PITCH + LETTER) / 2;
+    return {
+      size: SIZE,
+      squeeze: squeeze || Math.min(1, FIT / longest),
+      lines: lines.map((text, i) => ({
+        text,
+        baseline: top + i * PITCH + LETTER,
+        start: (-(spans[i][0] + spans[i][1]) / 2) * SIZE,
+        width: (spans[i][1] - spans[i][0]) * SIZE,
+      })),
+    };
+  }
+
+  // The layout depends on the font's measurements, so it's worked out again
+  // once the font has loaded.
+  let fontReady = 0;
+  const whenFontLoads = document.fonts?.load(`700 100px ${FONT}`).then(() => {
+    useFont(measurer, 100);
+    fontReady++;
+  });
 
   function hash2(a, b) {
     let h = Math.imul(a, 0x27d4eb2d) ^ Math.imul(b + 0x9e3779b9, 0x165667b1);
@@ -235,18 +266,6 @@ const MapView = (() => {
     return p;
   }
 
-  // A band around the curved wall's centre, over the top and down to yEnd
-  // at both ends.
-  function arcBand(cx, cy, r1, r2, yEnd) {
-    const a1 = Math.asin((yEnd - cy) / r1),
-      a2 = Math.asin((yEnd - cy) / r2),
-      p = new Path2D();
-    p.arc(cx, cy, r2, Math.PI - a2, 2 * Math.PI + a2);
-    p.arc(cx, cy, r1, 2 * Math.PI + a1, Math.PI - a1, true);
-    p.closePath();
-    return p;
-  }
-
   // Path2D.roundRect only arrived in iOS 16, so older iPhones draw it by hand.
   function roundedRect(path, x, y, w, h, r) {
     if (path.roundRect) return path.roundRect(x, y, w, h, r);
@@ -287,10 +306,8 @@ const MapView = (() => {
     const out = {};
 
     // Brick field (clip region): the D, the entrance and the walkway.
-    const field = new Path2D(),
-      a = Plan.angleAtY(R.field, sw.top);
-    field.arc(axis, arcY, R.field, Math.PI - a, 2 * Math.PI + a);
-    field.closePath();
+    const field = new Path2D();
+    polygon(field, Plan.fieldEdge);
     field.rect(axis - e, sw.top, 2 * e, sw.bottom - sw.top);
     field.rect(w.left, w.top, w.right - w.left, w.bottom - w.top);
     out.field = field;
@@ -298,9 +315,13 @@ const MapView = (() => {
     // The gravel bed, and the concrete path around it. At each end the path
     // widens into a square pad that runs down beside the walkway to the lot.
     // The pebbles between the border and the curved wall count as gravel too.
-    const wallBack = sw.bottom - 1;
-    out.gravel = halfRing(axis, arcY, R.wallOut, R.gravelOut);
-    out.gravel.addPath(arcBand(axis, arcY, R.wallIn, R.pebblesOut, wallBack));
+    const wallBack = sw.bottom - 1,
+      { OFF } = Plan;
+    out.gravel = new Path2D();
+    out.gravel.arc(axis, arcY, R.gravelOut, Math.PI, 2 * Math.PI);
+    for (const [x, y] of Plan.wallBack) out.gravel.lineTo(x, y);
+    out.gravel.closePath();
+    polygon(out.gravel, Plan.arcBand(OFF.pebbles, OFF.wall, wallBack, true));
     out.curb = halfRing(axis, arcY, R.gravelOut, R.curbOut);
     for (const p of Plan.pads) out.curb.rect(p.left, p.top, p.right - p.left, p.bottom - p.top);
 
@@ -319,15 +340,21 @@ const MapView = (() => {
     const scatter = (x, y, w, h) => {
       for (let i = 0; i < w * h * 3; i++) stone(out.bedStones, x + rand() * w, y + rand() * h);
     };
+    // (Scattered round the centre point, half a degree at a time, between the
+    // band's two edges.)
     for (const [r1, r2] of [
-      [R.wallOut, R.gravelOut],
-      [R.wallIn, R.pebblesOut],
+      [(d) => Plan.edgeAt(d, false) + OFF.gravel, () => R.gravelOut],
+      [(d) => Plan.edgeAt(d) + OFF.pebbles, (d) => Plan.edgeAt(d, false) + OFF.wall],
     ]) {
-      const area = (Math.PI / 2) * (r2 ** 2 - r1 ** 2);
-      for (let i = 0; i < area * 3; i++) {
-        const t = Math.PI + rand() * Math.PI,
-          r = Math.sqrt(r1 ** 2 + rand() * (r2 ** 2 - r1 ** 2));
-        stone(out.ringStones, axis + r * Math.cos(t), arcY + r * Math.sin(t));
+      let due = 0;
+      for (let d = 0; d < 180; d += 0.5) {
+        const a = r1(d + 0.25),
+          b = r2(d + 0.25);
+        for (due += ((Math.PI / 720) * (b * b - a * a)) * 3; due >= 1; due--) {
+          const t = ((d + rand() * 0.5) * Math.PI) / 180,
+            r = Math.sqrt(a * a + rand() * (b * b - a * a));
+          stone(out.ringStones, axis + r * Math.cos(t), arcY - r * Math.sin(t));
+        }
       }
     }
 
@@ -336,11 +363,13 @@ const MapView = (() => {
     const wallFace = sw.top + 1,
       [leftGate, rightGate] = Plan.gate.map((g) => g.stone),
       straight = [
-        [axis - R.wallOut + 1, leftGate.x0],
-        [rightGate.x1, axis + R.wallOut - 1],
+        [Plan.endPoint(wallBack, OFF.gravel, true)[0] + 1, leftGate.x0],
+        [rightGate.x1, Plan.endPoint(wallBack, OFF.gravel, false)[0] - 1],
       ];
-    out.wall = arcBand(axis, arcY, R.pebblesOut, R.wallOut, wallBack);
-    out.wallTop = arcBand(axis, arcY, R.pebblesOut + 0.9, R.wallOut - 0.9, wallBack - 0.9);
+    out.wall = new Path2D();
+    polygon(out.wall, Plan.arcBand(OFF.wall, OFF.gravel, wallBack));
+    out.wallTop = new Path2D();
+    polygon(out.wallTop, Plan.arcBand(OFF.wall + 0.9, OFF.gravel - 0.9, wallBack - 0.9));
     for (const [x0, x1] of straight) {
       out.wall.rect(x0, wallFace, x1 - x0, wallBack - wallFace);
       out.wallTop.rect(x0, wallFace + 0.9, x1 - x0, wallBack - wallFace - 1.8);
@@ -501,6 +530,7 @@ const MapView = (() => {
       this.static = buildStatic();
       this.tiles = buildTiles();
       loadFlags(flagSheets[0], () => this.draw());
+      whenFontLoads?.then(() => this.draw());
       this.reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
       new ResizeObserver(() => this.resize()).observe(canvas);
@@ -1144,14 +1174,13 @@ const MapView = (() => {
         scale = this.view.scale,
         detail = detailAt(scale);
       if (!detail || !this.visibleNamed) return;
-      ctx.textAlign = "center";
       ctx.textBaseline = "alphabetic";
       for (const b of this.visibleNamed) {
         const fit = this.fitText(b),
-          { size, baselines } = fit.full,
+          { size, squeeze, lines } = fit.full,
           p = b.slot,
           [sx, sy] = this.worldToScreen(p.x + p.w / 2, p.y + p.h / 2),
-          angle = this.view.angle + (p.vertical ? -Math.PI / 2 : 0),
+          angle = this.view.angle + (p.vertical ? -Math.PI / 2 : 0) + (b.flip ? Math.PI : 0),
           c = Math.cos(angle),
           s = Math.sin(angle);
         // Screen px, from the middle of the brick, turned to read along it.
@@ -1160,19 +1189,22 @@ const MapView = (() => {
         ctx.globalAlpha = b.id === this.scene.selectedId ? 1 : 0.85;
         if (size * scale >= MIN_TEXT_PX) {
           useFont(ctx, size * scale);
-          fit.lines.forEach((line, i) => ctx.fillText(line, 0, (baselines[i] - 0.5) * scale));
+          ctx.textAlign = "left";
+          ctx.transform(squeeze, 0, 0, 1, 0, 0);
+          for (const l of lines) ctx.fillText(l.text, l.start * scale, (l.baseline - 0.5) * scale);
         } else if (fit.short * scale >= MIN_TEXT_PX) {
           // Just the last name, bigger, until the whole engraving fits.
           useFont(ctx, fit.short * scale);
-          ctx.fillText(fit.shortText, 0, (CAP * fit.short * scale) / 2);
+          ctx.textAlign = "center";
+          ctx.fillText(fit.shortText, 0, (CAP_EM * fit.short * scale) / 2);
         } else {
           ctx.globalAlpha = 0.3 * detail;
-          const cap = CAP * size * scale,
+          const cap = LETTER * scale,
             thick = Math.max(0.8, cap * 0.6);
-          fit.lines.forEach((line, i) => {
-            const w = textWidth(line) * size * scale;
-            ctx.fillRect(-w / 2, (baselines[i] - 0.5) * scale - cap / 2 - thick / 2, w, thick);
-          });
+          for (const l of lines) {
+            const w = l.width * squeeze * scale;
+            ctx.fillRect(-w / 2, (l.baseline - 0.5) * scale - cap / 2 - thick / 2, w, thick);
+          }
         }
       }
       ctx.globalAlpha = 1;
@@ -1182,10 +1214,16 @@ const MapView = (() => {
     // A brick's engraving layout, cached per brick.
     fitText(b) {
       const lines = Model.engraving(b),
-        key = lines.join("\n");
+        key = `${lines.join("\n")}|${b.squeeze || ""}|${fontReady}`;
       if (b._fit?.key === key) return b._fit;
       const shortText = b.last || b.first || "";
-      b._fit = { key, lines, full: engrave(lines), short: Math.min(0.5, 1.8 / textWidth(shortText)), shortText };
+      b._fit = {
+        key,
+        lines,
+        full: engrave(lines, b.squeeze),
+        short: Math.min(0.5, 1.8 / textWidth(shortText)),
+        shortText,
+      };
       return b._fit;
     }
 
@@ -1432,5 +1470,6 @@ const MapView = (() => {
   }
 
   MapView.engrave = engrave; // the brick card lays out its text the same way
+  MapView.whenFontLoads = whenFontLoads;
   return MapView;
 })();

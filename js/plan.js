@@ -15,18 +15,35 @@ const Plan = (() => {
     // Measured off a walk-through video of the plaza (every brick and edge was
     // located on the herringbone itself), except the wall, gravel and curb
     // widths past the border, which the video didn't show.
-    axis: 73.6, // centre line of the curved wall and the entrance
+    axis: 73.6, // centre line of the entrance, through the curved wall's centre point
     arcY: 65.4, // centre point of the curved wall
-    fieldRadius: 65.4, // brick field, out to the gray border row
+    // The gray border along the curved wall isn't quite round. Where the
+    // bricks stop, as [angle, distance from the centre point] every 5°. 0° is
+    // the right end of the arc and 90° the top.
+    edge: [
+      [5, 67.6], [10, 66.4], [15, 65.4], [20, 64.9], [25, 64.7], [30, 64.8], [35, 65], [40, 65.6],
+      [45, 66], [50, 66], [55, 65.7], [60, 65.7], [65, 65.6], [70, 65.9], [75, 66.6], [80, 66.6],
+      [85, 66.3], [90, 65.7], [95, 65.4], [100, 65.1], [105, 64.5], [110, 63.9], [115, 63.2],
+      [120, 62.6], [125, 62.1], [130, 62.3], [135, 62.8], [140, 63.3], [145, 63.5], [150, 63.6],
+      [155, 63.8], [160, 64.2], [165, 64.8], [170, 65.7], [175, 66],
+    ],
     border: 1, // gray border pavers
     pebbles: 1.2, // strip of pebbles between the border and the curved wall
     wall: 3, // stone wall
-    gravel: 8, // stone bed with the lights, outside the wall
+    gravelRadius: 78.6, // outer edge of the stone bed with the lights, a circle round the centre point
     curb: 5, // concrete ring the flagpoles stand on
     straightWall: { top: 58.95, bottom: 64.05 }, // includes a border row on each side
     entranceHalfWidth: 30.2, // opening between the pillars' border pavers
-    pillar: 6, // stone pillars, each ringed by a row of border pavers
-    arcPillars: [45, 90, 135], // degrees; 0° is the right end of the arc
+    pillar: 6, // stone pillars
+    // Pillars in the curved wall. The border steps in around the front of
+    // each one: between the two angles it runs at distance r, with pebbles
+    // (pillarGap wide) between it and the pillar.
+    arcPillars: [
+      { from: 49.4, to: 57.4, r: 64.8 },
+      { from: 82.2, to: 89.8, r: 64.6 },
+      { from: 123.7, to: 132.7, r: 60.9 },
+    ],
+    pillarGap: 0.7,
     walkway: { left: 3.05, right: 146, top: 64.05, bottom: 78.95 }, // along the parking lot
     // The monument sits a little right of the centre line. Includes its border.
     monument: { left: 72.05, top: 37.4, right: 81.05, bottom: 42 },
@@ -59,12 +76,71 @@ const Plan = (() => {
     road: { gap: 95, slope: 0.136, lane: 34 },
   };
 
-  const R = { field: SHAPE.fieldRadius };
-  R.wallIn = R.field + SHAPE.border; // (the pebbles start here)
-  R.pebblesOut = R.wallIn + SHAPE.pebbles;
-  R.wallOut = R.pebblesOut + SHAPE.wall;
-  R.gravelOut = R.wallOut + SHAPE.gravel;
-  R.curbOut = R.gravelOut + SHAPE.curb;
+  const R = { gravelOut: SHAPE.gravelRadius, curbOut: SHAPE.gravelRadius + SHAPE.curb };
+
+  // How far past the border's inner edge each band along the curved wall
+  // starts: the pebbles, the wall and the gravel bed behind it.
+  const OFF = {
+    pebbles: SHAPE.border,
+    wall: SHAPE.border + SHAPE.pebbles,
+    gravel: SHAPE.border + SHAPE.pebbles + SHAPE.wall,
+  };
+
+  const rad = (deg) => (deg * Math.PI) / 180;
+
+  // Distance from the centre point to the border's inner edge, at an angle
+  // in degrees (0° at the right end of the arc). With notched, the border
+  // steps in around the pillars.
+  function edgeAt(deg, notched = true) {
+    if (notched) for (const p of SHAPE.arcPillars) if (deg >= p.from && deg <= p.to) return p.r;
+    const e = SHAPE.edge;
+    if (deg <= e[0][0]) return e[0][1];
+    for (let i = 1; i < e.length; i++) {
+      const [a0, r0] = e[i - 1],
+        [a1, r1] = e[i];
+      if (deg <= a1) return r0 + ((r1 - r0) * (deg - a0)) / (a1 - a0);
+    }
+    return e[e.length - 1][1];
+  }
+
+  // The point at an angle and distance from the centre point.
+  const at = (deg, r) => [SHAPE.axis + r * Math.cos(rad(deg)), SHAPE.arcY - r * Math.sin(rad(deg))];
+
+  // The angle at which the line `off` past the border's inner edge comes down
+  // to height y, at the right end of the arc or the left.
+  function endAngle(y, off, left) {
+    let deg = left ? 180 : 0;
+    for (let i = 0; i < 5; i++) {
+      const a = (Math.asin((SHAPE.arcY - y) / (edgeAt(deg, false) + off)) * 180) / Math.PI;
+      deg = left ? 180 - a : a;
+    }
+    return deg;
+  }
+
+  // The line `off` past the border's inner edge, from angle a0 up to a1, as
+  // points. With notched, it steps in around the pillars like the border.
+  function edgeLine(off, a0, a1, notched) {
+    const pts = [],
+      steps = [a0, a1];
+    for (let d = Math.ceil(a0); d < a1; d++) steps.push(d);
+    const notches = notched ? SHAPE.arcPillars.filter((p) => p.from > a0 && p.to < a1) : [];
+    for (const p of notches) steps.push(p.from, p.to);
+    for (const d of [...new Set(steps)].sort((a, b) => a - b)) {
+      const p = notches.find((n) => n.from === d || n.to === d);
+      if (!p) pts.push(at(d, edgeAt(d, notched) + off));
+      else if (p.from === d) pts.push(at(d, edgeAt(d, false) + off), at(d, p.r + off));
+      else pts.push(at(d, p.r + off), at(d, edgeAt(d, false) + off));
+    }
+    return pts;
+  }
+
+  // Outline of a band along the curved wall, `from` to `to` past the border's
+  // inner edge, over the top and down to height y at both ends.
+  function arcBand(from, to, y, notched = false) {
+    const outer = edgeLine(to, endAngle(y, to, false), endAngle(y, to, true), false),
+      inner = edgeLine(from, endAngle(y, from, false), endAngle(y, from, true), notched);
+    return [...outer, ...inner.reverse()];
+  }
 
   const walkway = SHAPE.walkway;
   const lotY = walkway.bottom + SHAPE.border; // where the parking lot starts
@@ -107,8 +183,10 @@ const Plan = (() => {
   function inField(x, y) {
     const { axis, arcY, straightWall: sw, entranceHalfWidth } = SHAPE,
       w = walkway;
-    if (y <= sw.top + EPS && (x - axis) ** 2 + (y - arcY) ** 2 <= R.field ** 2 + EPS)
-      return true;
+    if (y <= sw.top + EPS) {
+      const deg = (Math.atan2(arcY - y, x - axis) * 180) / Math.PI;
+      if (Math.hypot(x - axis, y - arcY) <= edgeAt(deg) + EPS) return true;
+    }
     if (
       Math.abs(x - axis) <= entranceHalfWidth + EPS &&
       y >= sw.top - EPS &&
@@ -166,9 +244,6 @@ const Plan = (() => {
     return cells.get(`${Math.floor(x)},${Math.floor(y)}`) || null;
   }
 
-  // Where on the circle (canvas angles, y down) a radius meets a given y.
-  const angleAtY = (r, y) => Math.asin((y - SHAPE.arcY) / r);
-
   // Pavers along a straight edge: splits the rectangle into ~2-unit pieces.
   function run(x0, y0, x1, y1) {
     const horizontal = x1 - x0 >= y1 - y0,
@@ -189,26 +264,49 @@ const Plan = (() => {
   }
 
   function borderPavers() {
-    const { axis, arcY, straightWall: sw, monument: m } = SHAPE,
+    const { straightWall: sw, monument: m } = SHAPE,
       w = walkway,
       [left, right] = gate.map((g) => g.ring);
     const pavers = [];
 
-    // Along the curved wall, down to the border row of the straight walls.
-    const start = Math.PI - angleAtY(R.field, sw.top + 1),
-      end = 2 * Math.PI + angleAtY(R.field, sw.top + 1),
-      n = Math.round(((end - start) * (R.field + 0.5)) / 2);
-    for (let i = 0; i < n; i++) {
-      const a = start + ((end - start) * i) / n,
-        b = start + ((end - start) * (i + 1)) / n,
-        pt = (r, t) => [axis + r * Math.cos(t), arcY + r * Math.sin(t)];
-      pavers.push([pt(R.field, a), pt(R.wallIn, a), pt(R.wallIn, b), pt(R.field, b)]);
+    // Along the curved wall, down to the border row of the straight walls,
+    // stepping in around the pillars: pieces about 2 units long between two
+    // angles, from distance r (at each angle) out to r + 1.
+    const b = SHAPE.border,
+      y = sw.top + b,
+      start = endAngle(y, 0, false),
+      end = endAngle(y, 0, true),
+      along = (a0, a1, r) => {
+        const n = Math.max(1, Math.round((rad(a1 - a0) * (r(a0) + r(a1) + b)) / 4));
+        for (let i = 0; i < n; i++) {
+          const p = a0 + ((a1 - a0) * i) / n,
+            q = a0 + ((a1 - a0) * (i + 1)) / n;
+          pavers.push([at(p, r(p)), at(p, r(p) + b), at(q, r(q) + b), at(q, r(q))]);
+        }
+      },
+      rim = (d) => edgeAt(d, false);
+    let from = start;
+    for (const p of [...SHAPE.arcPillars].sort((a, c) => a.from - c.from)) {
+      along(from, p.from, rim);
+      along(p.from, p.to, () => p.r);
+      // The two sides of the step, out to the rest of the border.
+      for (const [d, dir] of [
+        [p.from, 1],
+        [p.to, -1],
+      ]) {
+        const t = rad(d),
+          v = [-Math.sin(t) * dir * b, -Math.cos(t) * dir * b],
+          p0 = at(d, p.r + b),
+          p1 = at(d, rim(d) + b);
+        pavers.push([p0, p1, [p1[0] + v[0], p1[1] + v[1]], [p0[0] + v[0], p0[1] + v[1]]]);
+      }
+      from = p.to;
     }
+    along(from, end, rim);
 
     // Plaza side of the straight walls, up to the rings around the pillars.
-    const inner = Math.sqrt(R.field ** 2 - (sw.top + 1 - arcY) ** 2);
-    pavers.push(...run(axis - inner, sw.top, left.x0, sw.top + 1));
-    pavers.push(...run(right.x1, sw.top, axis + inner, sw.top + 1));
+    pavers.push(...run(at(end, rim(end))[0], sw.top, left.x0, sw.top + b));
+    pavers.push(...run(right.x1, sw.top, at(start, rim(start))[0], sw.top + b));
 
     // Around the walkway (the entrance stays open).
     pavers.push(...run(w.left - 1, w.top - 1, left.x0, w.top));
@@ -230,22 +328,26 @@ const Plan = (() => {
     return pavers;
   }
 
+  // Where the line `off` past the border's inner edge comes down to height y,
+  // at the right end of the arc or the left.
+  const endPoint = (y, off, left) => {
+    const d = endAngle(y, off, left);
+    return at(d, edgeAt(d, false) + off);
+  };
+
   function pillars() {
-    const { axis, arcY, straightWall: sw, pillar } = SHAPE;
-    const mid = (R.pebblesOut + R.wallOut) / 2, // the middle of the stone wall
+    const { straightWall: sw, pillar, border, pillarGap } = SHAPE,
+      mid = OFF.wall + SHAPE.wall / 2, // the middle of the stone wall
       y = (sw.top + sw.bottom) / 2;
     const list = [
-      { x: axis - mid, y, angle: 0 },
-      { x: axis + mid, y, angle: 0 },
+      { x: endPoint(y, mid, true)[0], y, angle: 0 },
+      { x: endPoint(y, mid, false)[0], y, angle: 0 },
       ...gate.map(({ stone: s }) => ({ x: (s.x0 + s.x1) / 2, y, angle: 0 })),
     ];
-    for (const deg of SHAPE.arcPillars) {
-      const t = (deg * Math.PI) / 180;
-      list.push({
-        x: axis + mid * Math.cos(t),
-        y: arcY - mid * Math.sin(t),
-        angle: Math.PI / 2 - t,
-      });
+    for (const p of SHAPE.arcPillars) {
+      const d = (p.from + p.to) / 2,
+        [x, py] = at(d, p.r + border + pillarGap + pillar / 2);
+      list.push({ x, y: py, angle: Math.PI / 2 - rad(d) });
     }
     return list.map((p) => ({ ...p, size: pillar }));
   }
@@ -267,7 +369,7 @@ const Plan = (() => {
   // The point the whole-plaza view puts in the middle of the screen, when
   // there's room: the middle of the bricks, from the top of the curved field
   // to the bottom of the walkway.
-  const centre = [SHAPE.axis, (SHAPE.arcY - R.field + walkway.bottom) / 2];
+  const centre = [SHAPE.axis, (SHAPE.arcY - edgeAt(90) + walkway.bottom) / 2];
 
   // The road: where its near white line crosses the line through the
   // monument, the way it runs (left to right), and the way across it (away
@@ -309,7 +411,15 @@ const Plan = (() => {
     drawable,
     slots,
     slotAt,
-    angleAtY,
+    OFF,
+    edgeAt,
+    arcBand,
+    endPoint,
+    // The brick field's curved edge, from the right end of the arc to the
+    // left, down to the top of the straight walls.
+    fieldEdge: edgeLine(0, endAngle(SHAPE.straightWall.top, 0, false), endAngle(SHAPE.straightWall.top, 0, true), true),
+    // The back of the curved wall, from the right end round to the left.
+    wallBack: edgeLine(OFF.gravel, 0, 180, false),
     borderPavers: borderPavers(),
     pillars: pillars(),
     gate,
