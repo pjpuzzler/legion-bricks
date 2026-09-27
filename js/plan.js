@@ -420,7 +420,7 @@ const Plan = (() => {
     frame = {
       left: SHAPE.axis - reach,
       right: SHAPE.axis + reach,
-      top: SHAPE.arcY - R.curbOut - 17.7, // the ball on the tall flagpole
+      top: SHAPE.arcY - R.curbOut - 20.4, // the ball on the tall flagpole
       // A strip of the parking lot, so on a short screen (a phone turned
       // sideways) the plaza sits in the middle with the flags above it.
       bottom: lotY + 10,

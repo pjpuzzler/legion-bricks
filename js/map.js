@@ -77,7 +77,10 @@ const MapView = (() => {
   // everything else at every zoom and look the same on every screen. (They only
   // ever reach over the path and lawn, never the bricks.)
   const FLAG = 4.5; // flag height, in brick units
-  const MAIN_POLE = 3.1; // the tall pole, in heights of its flag (Plan.frame's top reaches its ball)
+  // The poles, in heights of their flags (Plan.frame's top reaches the tall
+  // one's ball).
+  const MAIN_POLE = 3.6,
+    SIDE_POLE = 2.5;
 
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const JOINT = (px) => clamp(1.4 * px, 0.06, 0.16); // grout line width, in brick units
@@ -630,14 +633,10 @@ const MapView = (() => {
     return out;
   }
 
-  // Heights (brick units: 1 is 4 inches) of the things that cast shadows, as
-  // measured in Street View: the walls stand 2½ feet, the flagpoles about 23
-  // and 40, and the lamp about 23.
-  const HEIGHT = { wall: 7.5, pillar: 10, monument: 12, hedge: 9, bench: 5, pole: 69, mainPole: 121, lamp: 70 };
-  // The real flags, for their shadows: [hoist, fly, top below the pole's
-  // top]. A 5 by 8 foot US flag over a 3 by 5 POW/MIA flag, and 4 by 6 on the
-  // other poles.
-  const REAL_FLAG = { us: [15, 24, 7], pow: [9, 15], side: [12, 18, 4.5] };
+  // Heights (brick units: 1 is 4 inches) of the things that cast shadows,
+  // from Street View and the aerial photo: the walls stand 2½ feet, the
+  // flagpoles 20 and 35, and the lamp about 21.
+  const HEIGHT = { wall: 7.5, pillar: 10, monument: 12, hedge: 9, bench: 5, pole: 60, mainPole: 105, lamp: 63 };
   const LAMP_ARM = 3.2; // from the lamp post to the light
   // How far a shadow reaches for each unit of height: true to the sun while
   // it's high (above about 45°), then held under 1.1, so early and late
@@ -670,9 +669,11 @@ const MapView = (() => {
 
   // Shadows for the sun where it is, as an aerial photo shows them: each
   // raised outline swept away from the sun, each flagpole a narrowing strip
-  // with its flags rippling beside it, and the lamp.
-  // Solid things share one outline, so where their shadows cross they don't
-  // darken twice. Built again as the sun moves.
+  // with its flags rippling beside it (the size they're drawn, so the two
+  // match), and the lamp. Solid things share one outline, so where their
+  // shadows cross they don't darken twice, and it goes under them. The rest
+  // goes over whatever it crosses, walls and all. Built again as the sun
+  // moves.
   function buildShadows(S, sky) {
     const { altitude } = sky.sun;
     if (sky.shadow <= 0.02 || altitude < 2) return null;
@@ -685,9 +686,10 @@ const MapView = (() => {
       // Across the shadows.
       nx = -Math.cos(a),
       ny = -Math.sin(a),
-      path = new Path2D(),
+      ground = new Path2D(),
+      high = new Path2D(),
       cloth = new Path2D(); // the flags, which let some light through
-    for (const { h, pts } of S.raised) polygon(path, hull([...pts, ...pts.map(([x, y]) => at(x, y, h))]));
+    for (const { h, pts } of S.raised) polygon(ground, hull([...pts, ...pts.map(([x, y]) => at(x, y, h))]));
 
     // A pole, `w0` wide at the foot and `w1` at the top. A thin pole's
     // shadow blurs away along its length (the sun isn't a point), so each
@@ -702,7 +704,7 @@ const MapView = (() => {
         [tx - (nx * w1) / 2, ty - (ny * w1) / 2],
         [x - (nx * w0) / 2, y - (ny * w0) / 2],
       ]);
-      poles.push({ strip, from: [x, y], to: [tx, ty], fade: Math.max(0.25, 1 - (h * k) / 170) });
+      poles.push({ strip, from: [x, y], to: [tx, ty], fade: Math.max(0.15, 1 - (h * k) / 140) });
     };
     // A flag flying downwind from its pole, top edge `top` up: rippling
     // across the wind, and on a still day sagging at its loose end, as drawn.
@@ -727,29 +729,23 @@ const MapView = (() => {
       for (let i = 0; i < n; i++) polygon(cloth, hull([upper[i], upper[i + 1], lower[i + 1], lower[i]]));
     };
     for (const f of Plan.flagpoles) {
-      const h = f.main ? HEIGHT.mainPole : HEIGHT.pole;
-      pole(f.x, f.y, h, f.main ? 1.5 : 1.05, f.main ? 0.6 : 0.5);
-      if (f.main) {
-        const [hoist, fly, below] = REAL_FLAG.us,
-          [ph, pf] = REAL_FLAG.pow,
-          // At half-staff, the flag hangs halfway down.
-          top = sky.halfStaff ? (h + hoist) / 2 : h - below;
-        flag(f.x, f.y, top, hoist, fly);
-        flag(f.x, f.y, top - hoist - 1, ph, pf);
-      } else {
-        const [hoist, fly, below] = REAL_FLAG.side;
-        flag(f.x, f.y, h - below, hoist, fly);
-      }
+      const h = f.main ? HEIGHT.mainPole : HEIGHT.pole,
+        hoist = f.main ? FLAG * 1.2 : FLAG,
+        // At half-staff, the flag hangs halfway down.
+        top = f.main && sky.halfStaff ? (h + hoist) / 2 : h - 1.5;
+      pole(f.x, f.y, h, f.main ? 1.2 : 0.85, f.main ? 0.5 : 0.4);
+      flag(f.x, f.y, top, hoist, hoist * FLAG_RATIO);
+      if (f.main) flag(f.x, f.y, top - hoist * 1.06, hoist * 0.85, hoist * 0.85 * FLAG_RATIO);
     }
 
     // The lamp post, its arm reaching toward the parking lot, and the light.
     const L = Plan.lamp,
       lh = HEIGHT.lamp;
-    pole(L.x, L.y, lh, 1.0, 0.75);
-    polygon(path, hull(rectPts(L.x - 0.22, L.y, L.x + 0.22, L.y + LAMP_ARM).map(([x, y]) => at(x, y, lh - 0.3))));
+    pole(L.x, L.y, lh, 0.8, 0.6);
+    polygon(high, hull(rectPts(L.x - 0.22, L.y, L.x + 0.22, L.y + LAMP_ARM).map(([x, y]) => at(x, y, lh - 0.3))));
     const head = rectPts(L.x - 0.8, L.y + LAMP_ARM, L.x + 0.8, L.y + LAMP_ARM + 2.6);
-    polygon(path, hull([...head.map(([x, y]) => at(x, y, lh - 0.3)), ...head.map(([x, y]) => at(x, y, lh - 1.6))]));
-    return { path, cloth, poles };
+    polygon(high, hull([...head.map(([x, y]) => at(x, y, lh - 0.3)), ...head.map(([x, y]) => at(x, y, lh - 1.6))]));
+    return { ground, high, cloth, poles };
   }
 
   // Groups the field pavers into tiles so only visible ones get drawn.
@@ -1448,23 +1444,10 @@ const MapView = (() => {
         ctx.fill(S.poppyHearts);
       }
 
-      // Shadows, while the sun's up, under everything that stands up.
+      // Shadows, while the sun's up: first on the ground, under everything
+      // that stands up.
       if (this.shadows === undefined) this.shadows = buildShadows(S, sky);
-      if (this.shadows && this.shadowsIn > 0) {
-        const a = 0.42 * sky.shadow * this.shadowsIn,
-          shade = (alpha) => `rgba(20, 24, 34, ${alpha})`;
-        ctx.fillStyle = shade(a);
-        ctx.fill(this.shadows.path);
-        ctx.fillStyle = shade(a * 0.8);
-        ctx.fill(this.shadows.cloth);
-        for (const p of this.shadows.poles) {
-          const g = ctx.createLinearGradient(...p.from, ...p.to);
-          g.addColorStop(0, shade(a));
-          g.addColorStop(1, shade(a * p.fade));
-          ctx.fillStyle = g;
-          ctx.fill(p.strip);
-        }
-      }
+      this.drawShadows(false);
 
       // The shrubs on their beds, and the benches
       ctx.fillStyle = C.hedge;
@@ -1515,6 +1498,9 @@ const MapView = (() => {
         this.drawWreath((m.left + m.right) / 2, m.bottom - 2.3, 0.85);
       }
 
+      // Then the poles', flags' and lamp's, over the walls they cross.
+      this.drawShadows(true);
+
       this.drawLight(vis);
       this.drawEditOverlays();
       this.drawFlagpoles();
@@ -1530,6 +1516,31 @@ const MapView = (() => {
       if (zoomedIn !== this.zoomedIn) {
         this.zoomedIn = zoomedIn;
         this.cb.onZoomedIn?.(zoomedIn);
+      }
+    }
+
+    // Shadows from buildShadows(): the solid things' on the ground, or the
+    // rest (`high`), which go over whatever they cross.
+    drawShadows(high) {
+      const { ctx, sky } = this,
+        s = this.shadows;
+      if (!s || this.shadowsIn <= 0) return;
+      const a = 0.3 * sky.shadow * this.shadowsIn,
+        shade = (alpha) => `rgba(20, 24, 34, ${alpha})`;
+      ctx.fillStyle = shade(a);
+      if (!high) {
+        ctx.fill(s.ground);
+        return;
+      }
+      ctx.fill(s.high);
+      ctx.fillStyle = shade(a * 0.8);
+      ctx.fill(s.cloth);
+      for (const p of s.poles) {
+        const g = ctx.createLinearGradient(...p.from, ...p.to);
+        g.addColorStop(0, shade(a));
+        g.addColorStop(1, shade(a * p.fade));
+        ctx.fillStyle = g;
+        ctx.fill(p.strip);
       }
     }
 
@@ -1740,8 +1751,8 @@ const MapView = (() => {
         // still show pole above and below them.
         const [x, y] = this.worldToScreen(f.x, f.y),
           height = f.main ? fh * 1.2 : fh,
-          poleTop = y - height * (f.main ? MAIN_POLE : 2.1),
-          top = f.main && sky.halfStaff ? poleTop + height * 0.85 : poleTop,
+          poleTop = y - height * (f.main ? MAIN_POLE : SIDE_POLE),
+          top = f.main && sky.halfStaff ? poleTop + height * 1.1 : poleTop,
           fw = height * FLAG_RATIO * span,
           redraw = () => this.draw();
         // A satin aluminum pole: a darker edge with a bright line down it.
