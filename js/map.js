@@ -235,6 +235,18 @@ const MapView = (() => {
     return p;
   }
 
+  // A band around the curved wall's centre, over the top and down to yEnd
+  // at both ends.
+  function arcBand(cx, cy, r1, r2, yEnd) {
+    const a1 = Math.asin((yEnd - cy) / r1),
+      a2 = Math.asin((yEnd - cy) / r2),
+      p = new Path2D();
+    p.arc(cx, cy, r2, Math.PI - a2, 2 * Math.PI + a2);
+    p.arc(cx, cy, r1, 2 * Math.PI + a1, Math.PI - a1, true);
+    p.closePath();
+    return p;
+  }
+
   // Path2D.roundRect only arrived in iOS 16, so older iPhones draw it by hand.
   function roundedRect(path, x, y, w, h, r) {
     if (path.roundRect) return path.roundRect(x, y, w, h, r);
@@ -285,7 +297,10 @@ const MapView = (() => {
 
     // The gravel bed, and the concrete path around it. At each end the path
     // widens into a square pad that runs down beside the walkway to the lot.
+    // The pebbles between the border and the curved wall count as gravel too.
+    const wallBack = sw.bottom - 1;
     out.gravel = halfRing(axis, arcY, R.wallOut, R.gravelOut);
+    out.gravel.addPath(arcBand(axis, arcY, R.wallIn, R.pebblesOut, wallBack));
     out.curb = halfRing(axis, arcY, R.gravelOut, R.curbOut);
     for (const p of Plan.pads) out.curb.rect(p.left, p.top, p.right - p.left, p.bottom - p.top);
 
@@ -304,23 +319,32 @@ const MapView = (() => {
     const scatter = (x, y, w, h) => {
       for (let i = 0; i < w * h * 3; i++) stone(out.bedStones, x + rand() * w, y + rand() * h);
     };
-    const area = (Math.PI / 2) * (R.gravelOut ** 2 - R.wallOut ** 2);
-    for (let i = 0; i < area * 3; i++) {
-      const t = Math.PI + rand() * Math.PI,
-        r = Math.sqrt(R.wallOut ** 2 + rand() * (R.gravelOut ** 2 - R.wallOut ** 2));
-      stone(out.ringStones, axis + r * Math.cos(t), arcY + r * Math.sin(t));
+    for (const [r1, r2] of [
+      [R.wallOut, R.gravelOut],
+      [R.wallIn, R.pebblesOut],
+    ]) {
+      const area = (Math.PI / 2) * (r2 ** 2 - r1 ** 2);
+      for (let i = 0; i < area * 3; i++) {
+        const t = Math.PI + rand() * Math.PI,
+          r = Math.sqrt(r1 ** 2 + rand() * (r2 ** 2 - r1 ** 2));
+        stone(out.ringStones, axis + r * Math.cos(t), arcY + r * Math.sin(t));
+      }
     }
 
-    // Walls: the curved one and the two straight ones.
-    const wallEnd = axis - R.wallOut + 1,
-      wallFace = sw.top + 1,
-      wallBack = sw.bottom - 1;
-    out.wall = halfRing(axis, arcY, R.wallIn, R.wallOut);
-    out.wall.rect(wallEnd, wallFace, axis - e - S.pillar - wallEnd, wallBack - wallFace);
-    out.wall.rect(axis + e + S.pillar, wallFace, axis + R.wallOut - 1 - (axis + e + S.pillar), wallBack - wallFace);
-    out.wallTop = halfRing(axis, arcY, R.wallIn + 0.9, R.wallOut - 0.9);
-    out.wallTop.rect(wallEnd, wallFace + 0.9, axis - e - S.pillar - wallEnd, wallBack - wallFace - 1.8);
-    out.wallTop.rect(axis + e + S.pillar, wallFace + 0.9, axis + R.wallOut - 1 - (axis + e + S.pillar), wallBack - wallFace - 1.8);
+    // Walls: the curved one and the two straight ones, which run from its
+    // ends to the pillars at the entrance.
+    const wallFace = sw.top + 1,
+      [leftGate, rightGate] = Plan.gate.map((g) => g.stone),
+      straight = [
+        [axis - R.wallOut + 1, leftGate.x0],
+        [rightGate.x1, axis + R.wallOut - 1],
+      ];
+    out.wall = arcBand(axis, arcY, R.pebblesOut, R.wallOut, wallBack);
+    out.wallTop = arcBand(axis, arcY, R.pebblesOut + 0.9, R.wallOut - 0.9, wallBack - 0.9);
+    for (const [x0, x1] of straight) {
+      out.wall.rect(x0, wallFace, x1 - x0, wallBack - wallFace);
+      out.wallTop.rect(x0, wallFace + 0.9, x1 - x0, wallBack - wallFace - 1.8);
+    }
 
     out.pillars = new Path2D();
     out.pillarCaps = new Path2D();

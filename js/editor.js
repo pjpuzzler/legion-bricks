@@ -9,9 +9,6 @@
  */
 const Editor = (() => {
   const DRAFT_KEY = "post779-bricks-draft";
-  const LEGACY_DRAFTS = "legion-bricks-debug-drafts";
-  const LEGACY_MOVES = "legion-bricks-debug-reorders";
-  const LEGACY_DONE = "post779-legacy-handled";
 
   let app, S, h;
   let loadedHash = ""; // the brick list this page loaded
@@ -337,48 +334,6 @@ const Editor = (() => {
     return best;
   }
 
-  // ---- old editor drafts ------------------------------------------------------
-
-  function legacy() {
-    try {
-      if (localStorage.getItem(LEGACY_DONE)) return null;
-      const drafts = JSON.parse(localStorage.getItem(LEGACY_DRAFTS) || "[]"),
-        moves = JSON.parse(localStorage.getItem(LEGACY_MOVES) || "[]");
-      if (!Array.isArray(drafts) || !Array.isArray(moves) || !(drafts.length || moves.length)) return null;
-      return { drafts, moves };
-    } catch {
-      return null;
-    }
-  }
-
-  function importLegacy() {
-    const old = legacy();
-    if (!old) return;
-    localStorage.setItem(LEGACY_DONE, "1");
-    change(() => {
-      const moving = old.moves.map((m) => [S.bricks.find((b) => b.at === m.from), m.to]).filter(([b]) => b);
-      for (const [b, to] of moving) b.at = to;
-      for (const d of old.drafts) {
-        const rec = {
-          first: d.fname,
-          last: d.lname,
-          lines: [d.branch ? `U S ${d.branch}` : "", d.conflict || ""].filter(Boolean),
-          at: d.coords,
-          color: d.color === "gray" ? "gray" : "",
-        };
-        const existing = S.bricks.find((b) => b.at === d.coords);
-        if (existing) Object.assign(existing, Model.fromRecord(rec, existing.id));
-        else S.bricks.push(Model.fromRecord(rec, nextId++));
-      }
-    });
-    app.toast(`Brought in ${old.drafts.length} bricks and ${old.moves.length} moves from the old editor.`, 4200);
-  }
-
-  function ignoreLegacy() {
-    localStorage.setItem(LEGACY_DONE, "1");
-    app.renderCard();
-  }
-
   // ---- toolbar, banner and menu -------------------------------------------
 
   function buildToolbar() {
@@ -494,27 +449,9 @@ const Editor = (() => {
   // ---- the form ---------------------------------------------------------------
 
   function hintCard() {
-    const unplaced = S.bricks.filter((b) => !b.slot).length,
-      old = legacy();
+    const unplaced = S.bricks.filter((b) => !b.slot).length;
     return [
       h("div", { class: "card-head" }, h("p", { class: "card-kicker" }, "Editor")),
-      old
-        ? h(
-            "div",
-            { class: "notice" },
-            h(
-              "p",
-              {},
-              `This browser still has ${old.drafts.length} brick${old.drafts.length === 1 ? "" : "s"} and ${old.moves.length} move${old.moves.length === 1 ? "" : "s"} from the old editor that may not be in the list yet.`,
-            ),
-            h(
-              "div",
-              { class: "notice-actions" },
-              h("button", { type: "button", class: "btn btn-sm btn-primary", onclick: importLegacy }, "Bring them in"),
-              h("button", { type: "button", class: "btn btn-sm", onclick: ignoreLegacy }, "Ignore"),
-            ),
-          )
-        : null,
       h(
         "ul",
         { class: "hints" },
