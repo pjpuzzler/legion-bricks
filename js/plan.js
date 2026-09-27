@@ -24,7 +24,7 @@ const Plan = (() => {
     edge: [
       [0, 67.2], [10, 66], [20, 65.3], [30, 65.2], [40, 65.4], [50, 65.7], [60, 66], [70, 66.1], [80, 66],
       [90, 65.6], [100, 64.9], [110, 64.1], [120, 63.3], [130, 62.8], [140, 62.6], [150, 63], [160, 64.1],
-      [170, 66], [180, 68.6],
+      [170, 66], [180, 65.4],
     ],
     border: 1, // gray border pavers
     pebbles: 1.2, // strip of pebbles between the border and the curved wall
@@ -32,7 +32,9 @@ const Plan = (() => {
     gravelRadius: 78.6, // outer edge of the stone bed with the lights, a circle round the centre point
     curb: 5, // concrete ring the flagpoles stand on
     straightWall: { top: 58.95, bottom: 64.05 }, // includes a border row on each side
-    entranceHalfWidth: 30.2, // opening between the pillars' border pavers
+    // The entrance: its centre line (a little left of the curved wall's), half
+    // the opening between the pillars' border pavers, and the pillars' middle.
+    entrance: { centre: 73.2, halfWidth: 30.2, pillarY: 61 },
     pillar: 6, // stone pillars
     // Pillars in the curved wall (degrees). The border steps in around the
     // front of each one, with pebbles (pillarGap wide) between it and the pillar.
@@ -40,6 +42,9 @@ const Plan = (() => {
     notch: { width: 9, depth: 1.2 },
     pillarGap: 0.7,
     walkway: { left: 3.05, right: 146, top: 64.05, bottom: 78.95 }, // along the parking lot
+    // The lamp post at the right end of the walkway, on a round footing set
+    // in among the bricks (its middle, and the footing's radius).
+    lamp: { x: 125.25, y: 70.25, footing: 1.75 },
     // The monument sits a little right of the centre line. Includes its border.
     monument: { left: 72.05, top: 37.4, right: 81.05, bottom: 42 },
     // Flagpoles around the curb (degrees; 0° is the right end of the arc, next
@@ -189,14 +194,14 @@ const Plan = (() => {
   }
 
   function inField(x, y) {
-    const { axis, arcY, straightWall: sw, entranceHalfWidth } = SHAPE,
+    const { axis, arcY, straightWall: sw, entrance } = SHAPE,
       w = walkway;
     if (y <= sw.top + EPS) {
       const deg = (Math.atan2(arcY - y, x - axis) * 180) / Math.PI;
       if (Math.hypot(x - axis, y - arcY) <= edgeAt(deg) + EPS) return true;
     }
     if (
-      Math.abs(x - axis) <= entranceHalfWidth + EPS &&
+      Math.abs(x - entrance.centre) <= entrance.halfWidth + EPS &&
       y >= sw.top - EPS &&
       y <= sw.bottom + EPS
     )
@@ -209,10 +214,10 @@ const Plan = (() => {
   // The two pillars at the entrance, left and right: the stone, and the ring
   // of border pavers around it (which juts out past the wall on both sides).
   const gate = [-1, 1].map((dir) => {
-    const { axis, entranceHalfWidth: e, pillar, border, straightWall: sw } = SHAPE,
-      inner = axis + dir * (e + border),
+    const { entrance: en, pillar, border } = SHAPE,
+      inner = en.centre + dir * (en.halfWidth + border),
       outer = inner + dir * pillar,
-      y = (sw.top + sw.bottom) / 2,
+      y = en.pillarY,
       stone = { x0: Math.min(inner, outer), x1: Math.max(inner, outer), y0: y - pillar / 2, y1: y + pillar / 2 };
     return {
       stone,
@@ -226,6 +231,14 @@ const Plan = (() => {
     const m = SHAPE.monument;
     return overlaps(p, { x0: m.left, x1: m.right, y0: m.top, y1: m.bottom });
   }
+
+  // Pavers the lamp's footing covers, even in part.
+  const underLamp = (p) => {
+    const { x, y, footing } = SHAPE.lamp,
+      dx = Math.max(p.x - x, 0, x - (p.x + p.w)),
+      dy = Math.max(p.y - y, 0, y - (p.y + p.h));
+    return Math.hypot(dx, dy) < footing;
+  };
 
   const drawable = []; // every paver in the field, including the cut ones at the edges
   const slots = new Map(); // key → whole paver that can hold an engraved brick
@@ -241,7 +254,7 @@ const Plan = (() => {
       drawable.push(p);
 
       const whole = [p.x, p.x + p.w].every((x) => [p.y, p.y + p.h].every((y) => inField(x, y)));
-      if (!whole || overlapsMonument(p) || gate.some((g) => overlaps(p, g.ring))) continue;
+      if (!whole || overlapsMonument(p) || gate.some((g) => overlaps(p, g.ring)) || underLamp(p)) continue;
       slots.set(p.key, p);
       for (let x = p.x; x < p.x + p.w; x++)
         for (let y = p.y; y < p.y + p.h; y++) cells.set(`${x},${y}`, p);
@@ -313,8 +326,8 @@ const Plan = (() => {
     along(from, end, rim);
 
     // Plaza side of the straight walls, up to the rings around the pillars.
-    pavers.push(...run(at(end, rim(end))[0], sw.top, left.x0, sw.top + b));
-    pavers.push(...run(right.x1, sw.top, at(start, rim(start))[0], sw.top + b));
+    pavers.push(...run(endPoint(sw.top + b, b, true)[0], sw.top, left.x0, sw.top + b));
+    pavers.push(...run(right.x1, sw.top, endPoint(sw.top + b, b, false)[0], sw.top + b));
 
     // Around the walkway (the entrance stays open).
     pavers.push(...run(w.left - 1, w.top - 1, left.x0, w.top));
@@ -323,18 +336,6 @@ const Plan = (() => {
     pavers.push(...run(w.right, w.top, w.right + 1, w.bottom));
     pavers.push(...run(w.left - 1, w.bottom, w.right + 1, w.bottom + 1));
 
-    // Around the pillars at the entrance.
-    const ring = (x0, y0, x1, y1) => {
-      pavers.push(...run(x0, y0, x1, y0 + 1));
-      pavers.push(...run(x0, y1 - 1, x1, y1));
-      pavers.push(...run(x0, y0 + 1, x0 + 1, y1 - 1));
-      pavers.push(...run(x1 - 1, y0 + 1, x1, y1 - 1));
-    };
-    for (const r of [left, right]) ring(r.x0, r.y0, r.x1, r.y1);
-
-    // Around the monument, as laid: four long pavers along the front and four
-    // along the back. The right end is a paver on end at each corner with a
-    // cut piece between, and the left end a cut piece then a paver on end.
     const box = (x0, y0, x1, y1) =>
       pavers.push([
         [x0, y0],
@@ -342,6 +343,17 @@ const Plan = (() => {
         [x1, y1],
         [x0, y1],
       ]);
+
+    // Round the pillars at the entrance, as laid: a column of pavers on end
+    // down each side, and long ones between them along the front and back.
+    for (const r of [left, right]) {
+      pavers.push(...run(r.x0, r.y0, r.x0 + b, r.y1), ...run(r.x1 - b, r.y0, r.x1, r.y1));
+      pavers.push(...run(r.x0 + b, r.y0, r.x1 - b, r.y0 + b), ...run(r.x0 + b, r.y1 - b, r.x1 - b, r.y1));
+    }
+
+    // Round the monument, as laid: four long pavers along the front and four
+    // along the back. The right end is a paver on end at each corner with a
+    // cut piece between, and the left end a cut piece then a paver on end.
     for (let i = 0; i < 4; i++) {
       box(m.left + 2 * i, m.top, m.left + 2 * i + 2, m.top + 1);
       box(m.left + 2 * i, m.bottom - 1, m.left + 2 * i + 2, m.bottom);
@@ -369,7 +381,7 @@ const Plan = (() => {
     const list = [
       { x: endPoint(y, mid, true)[0], y, angle: 0 },
       { x: endPoint(y, mid, false)[0], y, angle: 0 },
-      ...gate.map(({ stone: s }) => ({ x: (s.x0 + s.x1) / 2, y, angle: 0 })),
+      ...gate.map(({ stone: s }) => ({ x: (s.x0 + s.x1) / 2, y: (s.y0 + s.y1) / 2, angle: 0 })),
     ];
     for (const p of notches) {
       const [x, py] = at(p.at, p.r + border + pillarGap + pillar / 2);
@@ -448,6 +460,7 @@ const Plan = (() => {
     wallBack: edgeLine(OFF.gravel, 0, 180, false),
     borderPavers: borderPavers(),
     pillars: pillars(),
+    lamp: SHAPE.lamp,
     gate,
     flagpoles: flagpoles(),
   };

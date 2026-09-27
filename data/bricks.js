@@ -64,7 +64,7 @@ const BRICKS = [
   { first: "FRANKLIN", last: "CARPER", lines: ["U S ARMY"], at: "58-43" },
   { first: "MICHAEL", last: "CARPER", lines: ["U S ARMY", "VIETNAM WAR"], at: "74-11" },
   { first: "TERRY", last: "CHAMBERLIN", lines: ["U S ARMY", "VIETNAM ERA"], at: "36-50" },
-  { first: "POST 779", last: "CHARTER SIGNERS", lines: ["NOVEMBER 30, 1946"], at: "51-38", color: "gray" },
+  { first: "POST 779", last: "CHARTER SIGNERS", lines: ["NOVEMBER 30, 1946"], split: true, at: "51-38", color: "gray" },
   { first: "J. E.", last: "CHIOVAROU", lines: ["U S NAVY"], at: "40-50" },
   { first: "CAROL A.", last: "CLARK-BANEY", lines: ["US ARMY"], split: true, at: "56-34" },
   { first: "MEREDITH", last: "COLDREN", lines: ["US NAVY WWII", "POST PUBLICITY OFFICER"], at: "54-36", color: "gray" },

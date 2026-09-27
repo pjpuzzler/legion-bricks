@@ -95,21 +95,31 @@ const App = (() => {
     });
   }
 
-  // A gold star for the fallen, the POW/MIA flag for the missing, and a
-  // plain tag for a chaplain. Small by a name in the list, spelled out on the
-  // brick's card.
-  const STAR = "M12 2.6l2.8 6.1 6.6.6-5 4.4 1.5 6.5L12 16.8l-5.9 3.4 1.5-6.5-5-4.4 6.6-.6Z";
-  function honorMark(key, spelled = false) {
-    const { name } = Model.HONORS[key],
-      mark =
-        key === "kia"
-          ? svg("svg", { viewBox: "0 0 24 24", class: "honor-star", "aria-hidden": "true" }, svg("path", { d: STAR }))
-          : key === "mia"
-            ? h("span", { class: "honor-flag", "aria-hidden": "true" })
-            : null;
-    if (!spelled) return mark && h("span", { class: `honor honor-${key}`, role: "img", "aria-label": name, title: name }, mark);
-    return h("span", { class: `honor-tag honor-${key}` }, mark, name);
+  // By the name of the fallen, the Gold Star service banner (a gold star on
+  // white, bordered red), and of the missing, the POW/MIA flag. Their meaning
+  // shows on hover and to screen readers.
+  function honorMark(key) {
+    const { name } = Model.HONORS[key];
+    let mark;
+    if (key === "kia")
+      mark = svg(
+        "svg",
+        { viewBox: "0 0 12 16", class: "honor-banner", "aria-hidden": "true" },
+        svg("rect", { x: 0, y: 0, width: 12, height: 16, rx: 0.8, fill: "#b3202e" }),
+        svg("rect", { x: 2, y: 2, width: 8, height: 12, fill: "#fff" }),
+        svg("path", {
+          d: "M6 4.6l.93 2.1 2.28.2-1.73 1.5.52 2.24L6 9.47l-2 1.17.52-2.24-1.73-1.5 2.28-.2Z",
+          fill: "#d9a92b",
+          stroke: "#27407a",
+          "stroke-width": 0.45,
+          "stroke-linejoin": "round",
+        }),
+      );
+    else if (key === "mia") mark = h("span", { class: "honor-flag", "aria-hidden": "true" });
+    else return null;
+    return h("span", { class: `honor honor-${key}`, role: "img", "aria-label": name, title: name }, mark);
   }
+  const honorMarks = (b) => Model.honorsFor(b).map(honorMark);
 
   let toastTimer = 0;
   function toast(message, ms = 2600) {
@@ -237,7 +247,7 @@ const App = (() => {
             "span",
             { class: "result-name" },
             h("span", { class: "result-name-text" }, Model.fullName(b) || "(no name yet)"),
-            Model.honorsFor(b).map((k) => honorMark(k)),
+            honorMarks(b),
           ),
           b.lines.length ? h("span", { class: "result-meta" }, Model.plainLines(b).join(" · ")) : null,
         ),
@@ -403,8 +413,7 @@ const App = (() => {
     // the card folds down to just the bar while the map is being looked
     // around. Dragging or tapping the card folds and opens it (see the fold,
     // below).
-    const emblems = Model.emblemsFor(b).slice(0, 2),
-      honors = Model.honorsFor(b);
+    const emblems = Model.emblemsFor(b).slice(0, 2);
     el.card.replaceChildren(
       h(
         "div",
@@ -426,9 +435,8 @@ const App = (() => {
           h(
             "div",
             { class: "card-title" },
-            h("p", { class: "card-name" }, Model.fullName(b) || "(no name yet)"),
+            h("p", { class: "card-name" }, Model.fullName(b) || "(no name yet)", honorMarks(b)),
             b.lines.length ? h("p", { class: "card-meta" }, Model.plainLines(b).join(" · ")) : null,
-            honors.length ? h("p", { class: "card-honors" }, honors.map((k) => honorMark(k, true))) : null,
           ),
           h("button", { type: "button", class: "icon-btn", "aria-label": "Share", title: "Share", onclick: () => share(b) }, icon("share")),
           h("button", { type: "button", class: "icon-btn", "aria-label": "Close", title: "Close", onclick: deselect }, icon("close")),
@@ -654,7 +662,8 @@ const App = (() => {
       return;
     }
     const r = el.mapWrap.getBoundingClientRect();
-    el.tooltip.textContent = text;
+    if (typeof text === "string") el.tooltip.textContent = text;
+    else el.tooltip.replaceChildren(...text);
     el.tooltip.hidden = false;
     const x = Math.min(e.clientX - r.left + 14, r.width - el.tooltip.offsetWidth - 8),
       y = Math.min(e.clientY - r.top + 16, r.height - el.tooltip.offsetHeight - 8);
@@ -682,7 +691,16 @@ const App = (() => {
         map.draw();
       }
       el.canvas.style.cursor = state.editor?.cursor(hit, b) || (b ? "pointer" : "");
-      showTooltip(editorText ?? (b ? Model.engraving(b).join("\n") : ""), e);
+      showTooltip(
+        editorText ??
+          (b
+            ? [
+                h("span", { class: "tooltip-name" }, Model.fullName(b), honorMarks(b)),
+                ...Model.plainLines(b).map((l) => h("span", { class: "tooltip-line" }, l)),
+              ]
+            : ""),
+        e,
+      );
     },
     canDrag: (hit) => !!state.editor?.canDrag(hit),
     onDragStart: (hit) => state.editor?.dragStart(hit),

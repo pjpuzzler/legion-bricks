@@ -8,7 +8,7 @@ const MapView = (() => {
   const C = {
     grass: "#97a95b",
     lot: "#6d7075",
-    lotLine: "#f1efe8",
+    lotLine: "#e8cc5a", // faded yellow, like the lot's
     road: "#8b8781", // older asphalt, lighter than the lot's
     roadYellow: "#e2b53e",
     concrete: "#e9e4da",
@@ -38,8 +38,12 @@ const MapView = (() => {
     hover: "#14243d",
     ink: "#2b1c10",
     inkGray: "#1d1d1d",
-    granite: "#62666d",
-    graniteEdge: "#3a3d42",
+    granite: "#9a9ea2", // light gray granite, like the monument
+    graniteEdge: "#5d6166",
+    graniteFleck: "#6f7479",
+    lampFooting: "#d9cf86", // the footing is painted yellow
+    lampFootingEdge: "#a3995a",
+    lampPost: "#3a3d42",
     pole: "#fbfbfb",
     poleEdge: "#55585c",
     targetOk: "rgba(22, 163, 74, 0.55)",
@@ -74,6 +78,7 @@ const MapView = (() => {
   const TEXTURE = 0.4; // how much the pavers' shades show when zoomed out
 
   const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+  const easeOut = (t) => 1 - (1 - t) ** 3; // starts at once, for springing back
   // Gives way less and less the further it's pushed, and never passes `max`.
   const resist = (x, max) => (max * x) / (x + 2 * max);
 
@@ -95,17 +100,16 @@ const MapView = (() => {
   }
 
   // How the lines sit on a 2 × 1 brick, measured off the real ones: capitals
-  // 0.156 tall, lines 0.243 apart, the block centred, and each line centred.
-  // When the longest line would be wider than 1.85, the engraver squeezed
-  // every line of that brick by the same amount to fit, but never stretched
-  // short ones. A brick can say how much it was squeezed (squeeze), where
-  // that's different. Gives the font size, the squeeze and each line's
+  // 0.1525 tall, lines 0.2375 apart, the block centred, and each line
+  // centred. When the longest line would be wider than 1.82, the engraver
+  // squeezed every line of that brick by the same amount to fit, but never
+  // stretched short ones. A brick can say it was squeezed more (squeeze). Gives the font size, the squeeze and each line's
   // baseline (down from the top edge) and start (from the middle, before
   // squeezing).
   const CAP_EM = 0.688, // height of the capitals, per unit of font size
-    LETTER = 0.156,
-    PITCH = 0.243,
-    FIT = 1.85,
+    LETTER = 0.1525,
+    PITCH = 0.2375,
+    FIT = 1.82,
     SIZE = LETTER / CAP_EM;
   function engrave(lines, squeeze) {
     const n = lines.length,
@@ -114,7 +118,7 @@ const MapView = (() => {
       top = 0.5 - ((n - 1) * PITCH + LETTER) / 2;
     return {
       size: SIZE,
-      squeeze: squeeze || Math.min(1, FIT / longest),
+      squeeze: Math.min(squeeze || 1, 1, FIT / longest),
       lines: lines.map((text, i) => ({
         text,
         baseline: top + i * PITCH + LETTER,
@@ -290,7 +294,16 @@ const MapView = (() => {
     path.closePath();
   }
 
+  // (Always wound the same way, so where two overlap in one path they add up
+  // rather than cancel out and leave a hole.)
   function polygon(path, pts) {
+    let area = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const [x0, y0] = pts[i],
+        [x1, y1] = pts[(i + 1) % pts.length];
+      area += x0 * y1 - x1 * y0;
+    }
+    if (area < 0) pts = [...pts].reverse();
     path.moveTo(pts[0][0], pts[0][1]);
     for (let i = 1; i < pts.length; i++) path.lineTo(pts[i][0], pts[i][1]);
     path.closePath();
@@ -314,14 +327,14 @@ const MapView = (() => {
   function buildStatic() {
     const S = Plan.SHAPE,
       R = Plan.R,
-      { axis, arcY, straightWall: sw, entranceHalfWidth: e, monument: m } = S,
+      { axis, arcY, straightWall: sw, entrance: en, monument: m } = S,
       w = Plan.walkway;
     const out = {};
 
     // Brick field (clip region): the D, the entrance and the walkway.
     const field = new Path2D();
     polygon(field, Plan.fieldEdge);
-    field.rect(axis - e, sw.top, 2 * e, sw.bottom - sw.top);
+    field.rect(en.centre - en.halfWidth, sw.top, 2 * en.halfWidth, sw.bottom - sw.top);
     field.rect(w.left, w.top, w.right - w.left, w.bottom - w.top);
     out.field = field;
 
@@ -402,6 +415,14 @@ const MapView = (() => {
     // with the border pavers).
     out.monumentStone = new Path2D();
     out.monumentStone.rect(m.left + 1, m.top + 1, m.right - m.left - 2, m.bottom - m.top - 2);
+    out.monumentFlecks = new Path2D();
+    for (let i = 0; i < 90; i++) {
+      const x = m.left + 1.15 + rand() * (m.right - m.left - 2.3),
+        y = m.top + 1.15 + rand() * (m.bottom - m.top - 2.3),
+        r = 0.03 + rand() * 0.05;
+      out.monumentFlecks.moveTo(x + r, y);
+      out.monumentFlecks.arc(x, y, r, 0, 2 * Math.PI);
+    }
 
     // The road behind the plaza: two lanes, with a white line along each edge
     // and a double yellow line down the middle. Long enough that its ends
@@ -688,7 +709,7 @@ const MapView = (() => {
       const moved =
         Math.abs(target.x - this.view.x) + Math.abs(target.y - this.view.y) > 1e-3 ||
         Math.abs(target.scale - this.view.scale) > 1e-3;
-      if (moved) this.animateTo(target, 260);
+      if (moved) this.animateTo(target, 320, easeOut);
       else this.adoptInsets();
       return moved;
     }
@@ -754,7 +775,7 @@ const MapView = (() => {
       this.anim = 0;
     }
 
-    animateTo(target, duration = 600) {
+    animateTo(target, duration = 600, easing = ease) {
       this.stop();
       this.clampView(target);
       this.goal = target; // where it's heading, for a zoom that comes mid-way
@@ -767,7 +788,7 @@ const MapView = (() => {
       const from = { ...this.view },
         start = performance.now();
       const step = (now) => {
-        const t = ease(Math.min(1, (now - start) / duration));
+        const t = easing(Math.min(1, (now - start) / duration));
         this.view.x = from.x + (target.x - from.x) * t;
         this.view.y = from.y + (target.y - from.y) * t;
         this.view.scale = Math.exp(Math.log(from.scale) + (Math.log(target.scale) - Math.log(from.scale)) * t);
@@ -1064,6 +1085,10 @@ const MapView = (() => {
       // Monument
       ctx.fillStyle = C.granite;
       ctx.fill(S.monumentStone);
+      ctx.fillStyle = C.graniteFleck;
+      ctx.globalAlpha = 0.55;
+      ctx.fill(S.monumentFlecks);
+      ctx.globalAlpha = 1;
       ctx.strokeStyle = C.graniteEdge;
       ctx.lineWidth = Math.max(px, 0.08);
       ctx.stroke(S.monumentStone);
@@ -1181,9 +1206,41 @@ const MapView = (() => {
         ctx.strokeStyle = C.poleEdge;
         ctx.stroke();
       }
+      // The lamp post's footing, painted yellow.
+      const L = Plan.lamp;
+      ctx.beginPath();
+      ctx.arc(L.x, L.y, L.footing, 0, 2 * Math.PI);
+      ctx.fillStyle = C.lampFooting;
+      ctx.fill();
+      ctx.strokeStyle = C.lampFootingEdge;
+      ctx.lineWidth = Math.max(1 / scale, 0.12);
+      ctx.stroke();
+
       // Little flags, drawn upright on screen whichever way the map is turned.
       // The tall centre pole flies the US flag with the POW/MIA flag under it.
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // The lamp, upright the same way: a dark post, and an arm holding out a
+      // shoebox light.
+      {
+        const [x, y] = this.worldToScreen(L.x, L.y),
+          top = y - 6 * scale,
+          arm = 2.2 * scale,
+          w = 3 * scale,
+          h = 0.9 * scale;
+        ctx.strokeStyle = C.lampPost;
+        ctx.lineCap = "round";
+        ctx.lineWidth = Math.max(1.2, 0.3 * scale);
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x, top);
+        ctx.lineTo(x - arm, top);
+        ctx.stroke();
+        ctx.lineCap = "butt";
+        ctx.fillStyle = C.lampPost;
+        ctx.fillRect(x - arm - w, top - h / 2, w, h);
+        ctx.fillStyle = "rgba(255, 244, 205, 0.85)"; // the lens underneath
+        ctx.fillRect(x - arm - w + 0.12 * w, top + h / 2 - Math.max(1, 0.18 * h), w * 0.76, Math.max(1, 0.18 * h));
+      }
       const fh = FLAG * scale; // in screen px
       for (const f of Plan.flagpoles) {
         const [x, y] = this.worldToScreen(f.x, f.y),
@@ -1310,6 +1367,14 @@ const MapView = (() => {
         if (e.pointerType === "mouse" && !this.pointers.size) this.cb.onHover?.(null, e);
       });
       c.addEventListener("wheel", (e) => this.wheel(e), { passive: false });
+      // Safari's trackpad pinch comes as gestures, which say when the fingers
+      // lift, so the zoom can give for exactly as long as they're down.
+      for (const [type, phase] of [
+        ["gesturestart", "start"],
+        ["gesturechange", "change"],
+        ["gestureend", "end"],
+      ])
+        c.addEventListener(type, (e) => this.gesture(e, phase), { passive: false });
       c.addEventListener("dblclick", (e) => {
         e.preventDefault();
         const [x, y] = this.pos(e);
@@ -1457,8 +1522,32 @@ const MapView = (() => {
       this.anim = requestAnimationFrame(step);
     }
 
+    // A trackpad pinch in Safari (on a phone, pinches come as pointers).
+    gesture(e, phase) {
+      if (this.pointers.size) return;
+      e.preventDefault();
+      if (phase === "start") {
+        this.stop();
+        clearTimeout(this.wheelTimer);
+        this.wheelRaw = null;
+        this.gestureFrom = { view: { ...this.view }, at: this.pos(e) };
+      } else if (phase === "change" && this.gestureFrom) {
+        const { view, at } = this.gestureFrom,
+          anchor = this.screenToWorld(...at, view),
+          v = { ...view, scale: clamp(view.scale * e.scale, this.fitScale() * 0.3, MAX_SCALE * 3) };
+        Object.assign(this.view, this.soften(this.placeWorldAt(v, anchor, at)));
+        this.isFit = false;
+        this.draw();
+        this.cb.onUserMove?.();
+      } else if (phase === "end" && this.gestureFrom) {
+        this.gestureFrom = null;
+        this.settle();
+      }
+    }
+
     wheel(e) {
       e.preventDefault();
+      if (this.gestureFrom) return; // Safari sends its pinch as gestures too
       this.stop();
       let dy = e.deltaY;
       if (e.deltaMode === 1) dy *= 16;
@@ -1474,10 +1563,12 @@ const MapView = (() => {
       this.isFit = false;
       this.draw();
       clearTimeout(this.wheelTimer);
+      // A wheel can't say when the fingers lift, so it springs back as soon
+      // as the scrolling stops.
       this.wheelTimer = setTimeout(() => {
         this.wheelRaw = null;
         this.settle();
-      }, 180);
+      }, 110);
       this.cb.onUserMove?.();
     }
 
