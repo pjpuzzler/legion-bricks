@@ -7,6 +7,8 @@
  *
  * Each brick:
  *   first, last  the name as engraved (the last name is used for sorting)
+ *   before, after  anything else engraved on the name's line, like CHPLN
+ *                before it or KIA after it
  *   lines        the other engraved lines, top to bottom
  *   split        true if the name is engraved on two lines, first name on top
  *   flip         true if the text is turned round from the usual (bricks lying
@@ -177,7 +179,7 @@ const BRICKS = [
   { first: "JAMES T", last: "LEEDY", lines: ["US NAVY", "VIETNAM WAR"], at: "39-9" },
   { first: "JOHN L", last: "LEEDY", lines: ["US ARMY"], at: "31-17" },
   { first: "RONALD E", last: "LEEDY", lines: ["US ARMY"], at: "34-15" },
-  { first: "CHPLN HAROLD E", last: "LEIGHTLEY", lines: ["U S ARMY AIR CORPS", "WWII"], at: "54-39", color: "gray" },
+  { first: "HAROLD E", last: "LEIGHTLEY", before: "CHPLN", lines: ["U S ARMY AIR CORPS", "WWII"], at: "54-39", color: "gray" },
   { first: "RUSSELL", last: "LEONARD", lines: ["U S ARMY", "VIETNAM WAR"], at: "64-30" },
   { first: "GEORGE R", last: "LESLIE", lines: ["U S ARMY", "WORLD WAR II"], flip: true, at: "3-43" },
   { first: "NICK", last: "LESNIAK", lines: ["U S ARMY"], at: "47-44" },
@@ -323,8 +325,8 @@ const BRICKS = [
   { first: "EDGAR A", last: "TREASTER", lines: ["U S NAVY", "VIETNAM WAR"], at: "48-56" },
   { first: "HARRY C", last: "VANADA, JR", lines: ["U S ARMY", "KOREAN WAR"], at: "71-70" },
   { first: "EDWARD C", last: "VOGT JR", lines: ["US ARMY", "WORLD WAR II"], at: "56-37", color: "gray" },
+  { first: "ARDEL H", last: "VONADA", after: "KIA", lines: ["U S ARMY AIR CORPS", "WORLD WAR II"], squeeze: 0.73, at: "46-39" },
   { first: "BUTCH", last: "VONADA", lines: ["U S AIR FORCE"], at: "2-36" },
-  { first: "ARDEL H", last: "VONADA KIA", lines: ["U S ARMY AIR CORPS", "WORLD WAR II"], squeeze: 0.73, at: "46-39" },
   { first: "NEVIN", last: "WALTERS", lines: ["U S ARMY", "WORLD WAR II"], squeeze: 1.02, at: "69-31" },
   { first: "ROBERT", last: "WALTERS SR", lines: ["U S AIR FORCE", "VIETNAM WAR"], at: "70-29" },
   { first: "GARY L", last: "WAY", lines: ["U S ARMY", "VIETNAM WAR"], at: "48-7" },

@@ -90,10 +90,40 @@ const Model = (() => {
   }
 
   const fullName = (b) => [b.first, b.last].filter(Boolean).join(" ");
+  const joined = (...parts) => parts.filter(Boolean).join(" ");
 
   // The engraved lines, top to bottom: the name (on one line, or the first
   // name over the last), then the rest.
-  const engraving = (b) => [...(b.split && b.first && b.last ? [b.first, b.last] : [fullName(b)]), ...b.lines];
+  // (With anything else on the name's line, like CHPLN or KIA, around it.)
+  const engraving = (b) => [
+    ...(b.split && b.first && b.last
+      ? [joined(b.before, b.first), joined(b.last, b.after)]
+      : [joined(b.before, fullName(b), b.after)]),
+    ...b.lines,
+  ];
+
+  // Honors read from the engraving, shown as a badge by the name.
+  const HONORS = {
+    kia: { name: "Killed in action", re: /\bK\.?I\.?A\b|\bKILLED IN ACTION\b/ },
+    mia: { name: "Missing in action", re: /\bM\.?I\.?A\b|\bMISSING IN ACTION\b/ },
+    chaplain: { name: "Chaplain", re: /\bCHPLN\b|\bCHAPLAIN\b/ },
+  };
+  const honorsFor = (b) => {
+    const text = [b.before, b.after, ...b.lines].join(" / ").toUpperCase();
+    return Object.keys(HONORS).filter((k) => HONORS[k].re.test(text));
+  };
+
+  // The engraved lines for reading in a list: without KIA or MIA (the badge
+  // says it), and one space between words.
+  const plainLines = (b) =>
+    b.lines
+      .map((l) =>
+        l
+          .replace(/[,.]?\s*\b(KIA|MIA)\b\.?/g, "")
+          .replace(/\s+/g, " ")
+          .replace(/^[\s,.]+|[\s,]+$/g, ""),
+      )
+      .filter(Boolean);
 
   function slugify(s) {
     return s
@@ -121,6 +151,8 @@ const Model = (() => {
       id,
       first: clean(r.first),
       last: clean(r.last),
+      before: clean(r.before),
+      after: clean(r.after),
       lines,
       split: r.split === true,
       flip: r.flip === true,
@@ -134,6 +166,8 @@ const Model = (() => {
   // Brick → record, with a fixed key order and empty fields left out.
   function toRecord(b) {
     const r = { first: b.first, last: b.last };
+    if (b.before) r.before = b.before;
+    if (b.after) r.after = b.after;
     if (b.lines.length) r.lines = [...b.lines];
     if (b.split) r.split = true;
     if (b.flip) r.flip = true;
@@ -153,6 +187,8 @@ const Model = (() => {
  *
  * Each brick:
  *   first, last  the name as engraved (the last name is used for sorting)
+ *   before, after  anything else engraved on the name's line, like CHPLN
+ *                before it or KIA after it
  *   lines        the other engraved lines, top to bottom
  *   split        true if the name is engraved on two lines, first name on top
  *   flip         true if the text is turned round from the usual (bricks lying
@@ -201,6 +237,9 @@ const Model = (() => {
   function searchIndex(b) {
     const eras = erasFor(b),
       extra = [
+        b.before,
+        b.after,
+        ...honorsFor(b).map((k) => HONORS[k].name),
         ...emblemsFor(b).map((k) => EMBLEMS[k].name),
         ...eras.map((e) => ALIASES[e] || e),
       ];
@@ -294,6 +333,9 @@ const Model = (() => {
     erasFor,
     fullName,
     engraving,
+    HONORS,
+    honorsFor,
+    plainLines,
     slugify,
     compare,
     fromRecord,

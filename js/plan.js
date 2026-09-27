@@ -17,15 +17,14 @@ const Plan = (() => {
     // widths past the border, which the video didn't show.
     axis: 73.6, // centre line of the entrance, through the curved wall's centre point
     arcY: 65.4, // centre point of the curved wall
-    // The gray border along the curved wall isn't quite round. Where the
-    // bricks stop, as [angle, distance from the centre point] every 5°. 0° is
-    // the right end of the arc and 90° the top.
+    // The gray border along the curved wall isn't quite round: it's a little
+    // flatter on the left. Where the bricks stop, as [angle, distance from the
+    // centre point] every 10°, a smooth curve through the edge traced off the
+    // video. 0° is the right end of the arc and 90° the top.
     edge: [
-      [5, 67.6], [10, 66.4], [15, 65.4], [20, 64.9], [25, 64.7], [30, 64.8], [35, 65], [40, 65.6],
-      [45, 66], [50, 66], [55, 65.7], [60, 65.7], [65, 65.6], [70, 65.9], [75, 66.6], [80, 66.6],
-      [85, 66.3], [90, 65.7], [95, 65.4], [100, 65.1], [105, 64.5], [110, 63.9], [115, 63.2],
-      [120, 62.6], [125, 62.1], [130, 62.3], [135, 62.8], [140, 63.3], [145, 63.5], [150, 63.6],
-      [155, 63.8], [160, 64.2], [165, 64.8], [170, 65.7], [175, 66],
+      [0, 67.2], [10, 66], [20, 65.3], [30, 65.2], [40, 65.4], [50, 65.7], [60, 66], [70, 66.1], [80, 66],
+      [90, 65.6], [100, 64.9], [110, 64.1], [120, 63.3], [130, 62.8], [140, 62.6], [150, 63], [160, 64.1],
+      [170, 66], [180, 68.6],
     ],
     border: 1, // gray border pavers
     pebbles: 1.2, // strip of pebbles between the border and the curved wall
@@ -35,14 +34,10 @@ const Plan = (() => {
     straightWall: { top: 58.95, bottom: 64.05 }, // includes a border row on each side
     entranceHalfWidth: 30.2, // opening between the pillars' border pavers
     pillar: 6, // stone pillars
-    // Pillars in the curved wall. The border steps in around the front of
-    // each one: between the two angles it runs at distance r, with pebbles
-    // (pillarGap wide) between it and the pillar.
-    arcPillars: [
-      { from: 49.4, to: 57.4, r: 64.8 },
-      { from: 82.2, to: 89.8, r: 64.6 },
-      { from: 123.7, to: 132.7, r: 60.9 },
-    ],
+    // Pillars in the curved wall (degrees). The border steps in around the
+    // front of each one, with pebbles (pillarGap wide) between it and the pillar.
+    arcPillars: [52.6, 90, 127.4],
+    notch: { width: 9, depth: 1.2 },
     pillarGap: 0.7,
     walkway: { left: 3.05, right: 146, top: 64.05, bottom: 78.95 }, // along the parking lot
     // The monument sits a little right of the centre line. Includes its border.
@@ -89,18 +84,31 @@ const Plan = (() => {
   const rad = (deg) => (deg * Math.PI) / 180;
 
   // Distance from the centre point to the border's inner edge, at an angle
-  // in degrees (0° at the right end of the arc). With notched, the border
-  // steps in around the pillars.
+  // in degrees (0° at the right end of the arc), smoothly through SHAPE.edge.
+  function rimAt(deg) {
+    const e = SHAPE.edge,
+      step = e[1][0] - e[0][0],
+      i = clampIndex(Math.floor((deg - e[0][0]) / step), e.length - 2),
+      t = (deg - e[i][0]) / step,
+      [p0, p1, p2, p3] = [i - 1, i, i + 1, i + 2].map((k) => e[clampIndex(k, e.length - 1)][1]);
+    return (
+      p1 + 0.5 * t * (p2 - p0 + t * (2 * p0 - 5 * p1 + 4 * p2 - p3 + t * (3 * (p1 - p2) + p3 - p0)))
+    );
+  }
+  const clampIndex = (i, max) => Math.max(0, Math.min(max, i));
+
+  // Where the border steps in around each pillar: from one angle to the
+  // other, at distance r.
+  const notches = SHAPE.arcPillars.map((at) => {
+    const rim = rimAt(at),
+      half = ((SHAPE.notch.width / 2 / rim) * 180) / Math.PI;
+    return { at, from: at - half, to: at + half, r: rim - SHAPE.notch.depth };
+  });
+
+  // The border's inner edge; with notched, stepping in around the pillars.
   function edgeAt(deg, notched = true) {
-    if (notched) for (const p of SHAPE.arcPillars) if (deg >= p.from && deg <= p.to) return p.r;
-    const e = SHAPE.edge;
-    if (deg <= e[0][0]) return e[0][1];
-    for (let i = 1; i < e.length; i++) {
-      const [a0, r0] = e[i - 1],
-        [a1, r1] = e[i];
-      if (deg <= a1) return r0 + ((r1 - r0) * (deg - a0)) / (a1 - a0);
-    }
-    return e[e.length - 1][1];
+    if (notched) for (const p of notches) if (deg >= p.from && deg <= p.to) return p.r;
+    return rimAt(deg);
   }
 
   // The point at an angle and distance from the centre point.
@@ -123,10 +131,10 @@ const Plan = (() => {
     const pts = [],
       steps = [a0, a1];
     for (let d = Math.ceil(a0); d < a1; d++) steps.push(d);
-    const notches = notched ? SHAPE.arcPillars.filter((p) => p.from > a0 && p.to < a1) : [];
-    for (const p of notches) steps.push(p.from, p.to);
+    const inside = notched ? notches.filter((p) => p.from > a0 && p.to < a1) : [];
+    for (const p of inside) steps.push(p.from, p.to);
     for (const d of [...new Set(steps)].sort((a, b) => a - b)) {
-      const p = notches.find((n) => n.from === d || n.to === d);
+      const p = inside.find((n) => n.from === d || n.to === d);
       if (!p) pts.push(at(d, edgeAt(d, notched) + off));
       else if (p.from === d) pts.push(at(d, edgeAt(d, false) + off), at(d, p.r + off));
       else pts.push(at(d, p.r + off), at(d, edgeAt(d, false) + off));
@@ -286,7 +294,7 @@ const Plan = (() => {
       },
       rim = (d) => edgeAt(d, false);
     let from = start;
-    for (const p of [...SHAPE.arcPillars].sort((a, c) => a.from - c.from)) {
+    for (const p of notches) {
       along(from, p.from, rim);
       along(p.from, p.to, () => p.r);
       // The two sides of the step, out to the rest of the border.
@@ -315,7 +323,7 @@ const Plan = (() => {
     pavers.push(...run(w.right, w.top, w.right + 1, w.bottom));
     pavers.push(...run(w.left - 1, w.bottom, w.right + 1, w.bottom + 1));
 
-    // Around the pillars at the entrance, and around the monument.
+    // Around the pillars at the entrance.
     const ring = (x0, y0, x1, y1) => {
       pavers.push(...run(x0, y0, x1, y0 + 1));
       pavers.push(...run(x0, y1 - 1, x1, y1));
@@ -323,7 +331,26 @@ const Plan = (() => {
       pavers.push(...run(x1 - 1, y0 + 1, x1, y1 - 1));
     };
     for (const r of [left, right]) ring(r.x0, r.y0, r.x1, r.y1);
-    ring(m.left, m.top, m.right, m.bottom);
+
+    // Around the monument, as laid: four long pavers along the front and four
+    // along the back. The right end is a paver on end at each corner with a
+    // cut piece between, and the left end a cut piece then a paver on end.
+    const box = (x0, y0, x1, y1) =>
+      pavers.push([
+        [x0, y0],
+        [x1, y0],
+        [x1, y1],
+        [x0, y1],
+      ]);
+    for (let i = 0; i < 4; i++) {
+      box(m.left + 2 * i, m.top, m.left + 2 * i + 2, m.top + 1);
+      box(m.left + 2 * i, m.bottom - 1, m.left + 2 * i + 2, m.bottom);
+    }
+    box(m.right - 1, m.top, m.right, m.top + 2);
+    box(m.right - 1, m.top + 2, m.right, m.bottom - 2);
+    box(m.right - 1, m.bottom - 2, m.right, m.bottom);
+    box(m.left, m.top + 1, m.left + 1, m.bottom - 3);
+    box(m.left, m.bottom - 3, m.left + 1, m.bottom - 1);
 
     return pavers;
   }
@@ -344,10 +371,9 @@ const Plan = (() => {
       { x: endPoint(y, mid, false)[0], y, angle: 0 },
       ...gate.map(({ stone: s }) => ({ x: (s.x0 + s.x1) / 2, y, angle: 0 })),
     ];
-    for (const p of SHAPE.arcPillars) {
-      const d = (p.from + p.to) / 2,
-        [x, py] = at(d, p.r + border + pillarGap + pillar / 2);
-      list.push({ x, y: py, angle: Math.PI / 2 - rad(d) });
+    for (const p of notches) {
+      const [x, py] = at(p.at, p.r + border + pillarGap + pillar / 2);
+      list.push({ x, y: py, angle: Math.PI / 2 - rad(p.at) });
     }
     return list.map((p) => ({ ...p, size: pillar }));
   }

@@ -95,6 +95,22 @@ const App = (() => {
     });
   }
 
+  // A gold star for the fallen, the POW/MIA flag for the missing, and a
+  // plain tag for a chaplain. Small by a name in the list, spelled out on the
+  // brick's card.
+  const STAR = "M12 2.6l2.8 6.1 6.6.6-5 4.4 1.5 6.5L12 16.8l-5.9 3.4 1.5-6.5-5-4.4 6.6-.6Z";
+  function honorMark(key, spelled = false) {
+    const { name } = Model.HONORS[key],
+      mark =
+        key === "kia"
+          ? svg("svg", { viewBox: "0 0 24 24", class: "honor-star", "aria-hidden": "true" }, svg("path", { d: STAR }))
+          : key === "mia"
+            ? h("span", { class: "honor-flag", "aria-hidden": "true" })
+            : null;
+    if (!spelled) return mark && h("span", { class: `honor honor-${key}`, role: "img", "aria-label": name, title: name }, mark);
+    return h("span", { class: `honor-tag honor-${key}` }, mark, name);
+  }
+
   let toastTimer = 0;
   function toast(message, ms = 2600) {
     el.toast.textContent = message;
@@ -134,6 +150,11 @@ const App = (() => {
       slugCount.set(base, n);
       b.slug = n === 1 ? base : `${base}-${n}`;
       state.bySlug.set(b.slug, b);
+    }
+    // A link made while KIA or CHPLN was part of the name still finds the brick.
+    for (const b of state.bricks) {
+      const old = Model.slugify(Model.engraving({ ...b, split: false, lines: [] })[0]);
+      if (old && !state.bySlug.has(old)) state.bySlug.set(old, b);
     }
     if (state.selectedId != null && !state.byId.has(state.selectedId)) state.selectedId = null;
   }
@@ -212,8 +233,13 @@ const App = (() => {
         h(
           "span",
           { class: "result-text" },
-          h("span", { class: "result-name" }, Model.fullName(b) || "(no name yet)"),
-          b.lines.length ? h("span", { class: "result-meta" }, b.lines.join(" · ")) : null,
+          h(
+            "span",
+            { class: "result-name" },
+            h("span", { class: "result-name-text" }, Model.fullName(b) || "(no name yet)"),
+            Model.honorsFor(b).map((k) => honorMark(k)),
+          ),
+          b.lines.length ? h("span", { class: "result-meta" }, Model.plainLines(b).join(" · ")) : null,
         ),
         !b.slot ? h("span", { class: "result-badge" }, b.problem ? "Check spot" : "Not mapped") : null,
       );
@@ -377,7 +403,8 @@ const App = (() => {
     // the card folds down to just the bar while the map is being looked
     // around. Dragging or tapping the card folds and opens it (see the fold,
     // below).
-    const emblems = Model.emblemsFor(b).slice(0, 2);
+    const emblems = Model.emblemsFor(b).slice(0, 2),
+      honors = Model.honorsFor(b);
     el.card.replaceChildren(
       h(
         "div",
@@ -400,7 +427,8 @@ const App = (() => {
             "div",
             { class: "card-title" },
             h("p", { class: "card-name" }, Model.fullName(b) || "(no name yet)"),
-            b.lines.length ? h("p", { class: "card-meta" }, b.lines.join(" · ")) : null,
+            b.lines.length ? h("p", { class: "card-meta" }, Model.plainLines(b).join(" · ")) : null,
+            honors.length ? h("p", { class: "card-honors" }, honors.map((k) => honorMark(k, true))) : null,
           ),
           h("button", { type: "button", class: "icon-btn", "aria-label": "Share", title: "Share", onclick: () => share(b) }, icon("share")),
           h("button", { type: "button", class: "icon-btn", "aria-label": "Close", title: "Close", onclick: deselect }, icon("close")),

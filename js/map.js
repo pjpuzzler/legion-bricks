@@ -53,7 +53,12 @@ const MapView = (() => {
   const MAX_SCALE = 110; // screen px per brick unit
   const PAN_ROOM = 16; // how far past the plaza's edges you can move once zoomed in
   const OVERSHOOT = 40; // how far (screen px) a drag can pull the map past its limits
-  const MIN_TEXT_PX = 6.5;
+  const ZOOM_GIVE = 0.4; // how far a pinch can push the zoom past its limits (log scale, about a third)
+  // Zoom levels (screen px per brick unit) where the lettering changes, on
+  // every brick at once: faint bars stand in for the lines, then each last
+  // name shows, then the whole engraving.
+  const NAMES_AT = 14,
+    FULL_AT = 29;
   // Flags are part of the drawing: sized in brick units, so they scale with
   // everything else at every zoom and look the same on every screen. (They only
   // ever reach over the path and lawn, never the bricks.)
@@ -117,6 +122,14 @@ const MapView = (() => {
         width: (spans[i][1] - spans[i][0]) * SIZE,
       })),
     };
+  }
+
+  // A last name on its own: the same size on every brick, squeezed a little
+  // to fit a long one (as the engraver did), and only then made smaller.
+  function lastName(text) {
+    const natural = textWidth(text) * 0.5,
+      squeeze = Math.max(0.72, Math.min(1, 1.8 / natural));
+    return { size: Math.min(0.5, 1.8 / (textWidth(text) * squeeze)), squeeze };
   }
 
   // The layout depends on the font's measurements, so it's worked out again
@@ -655,8 +668,8 @@ const MapView = (() => {
         focus = this.focusPoint(),
         target = this.screenToWorld(...focus, raw),
         v = { ...raw };
-      if (v.scale < fitScale) v.scale = fitScale * Math.exp(-resist(Math.log(fitScale / v.scale), 0.1));
-      v.scale = Math.min(v.scale, MAX_SCALE);
+      if (v.scale < fitScale) v.scale = fitScale * Math.exp(-resist(Math.log(fitScale / v.scale), ZOOM_GIVE));
+      if (v.scale > MAX_SCALE) v.scale = MAX_SCALE * Math.exp(resist(Math.log(v.scale / MAX_SCALE), ZOOM_GIVE));
       this.placeWorldAt(v, target, focus);
       const [hx, hy] = this.screenToWorld(...focus, this.clampView({ ...v }, true)),
         pull = (d) => (Math.sign(d) * resist(Math.abs(d) * v.scale, OVERSHOOT)) / v.scale;
@@ -783,6 +796,8 @@ const MapView = (() => {
     zoomAt(sx, sy, factor, animate = false) {
       const from = this.zoomFrom(animate),
         v = { ...from };
+      const atLimit = factor < 1 ? from.scale <= this.fitScale() * 1.001 : from.scale >= MAX_SCALE * 0.999;
+      if (animate && atLimit) return this.bounce(sx, sy, factor < 1 ? 0.85 : 1.15);
       const anchor = this.screenToWorld(sx, sy, from);
       v.scale = clamp(v.scale * factor, this.fitScale(), MAX_SCALE);
       this.placeWorldAt(v, anchor, [sx, sy]);
@@ -793,6 +808,28 @@ const MapView = (() => {
         Object.assign(this.view, this.clampView(v));
         this.draw();
       }
+    }
+
+    // Nudges the zoom a little way past its limit and lets it spring back, so
+    // a button that can't go any further still answers.
+    bounce(sx, sy, factor) {
+      if (this.reduceMotion.matches) return;
+      this.stop();
+      const from = { ...this.view },
+        anchor = this.screenToWorld(sx, sy, from),
+        peek = this.placeWorldAt({ ...from, scale: from.scale * factor }, anchor, [sx, sy]),
+        start = performance.now();
+      const step = (now) => {
+        const t = Math.min(1, (now - start) / 420),
+          k = Math.sin(Math.PI * Math.min(1, t * 1.25)) * (1 - t);
+        this.view.x = from.x + (peek.x - from.x) * k;
+        this.view.y = from.y + (peek.y - from.y) * k;
+        this.view.scale = from.scale * (peek.scale / from.scale) ** k;
+        this.render();
+        this.anim = t < 1 ? requestAnimationFrame(step) : 0;
+        if (!this.anim) Object.assign(this.view, from);
+      };
+      this.anim = requestAnimationFrame(step);
     }
 
     // Zooms on the middle of the map, or on a brick when it's in sight, so
@@ -1187,16 +1224,18 @@ const MapView = (() => {
         ctx.setTransform(c * dpr, s * dpr, -s * dpr, c * dpr, sx * dpr, sy * dpr);
         ctx.fillStyle = b.color === "gray" ? C.inkGray : C.ink;
         ctx.globalAlpha = b.id === this.scene.selectedId ? 1 : 0.85;
-        if (size * scale >= MIN_TEXT_PX) {
+        if (scale >= FULL_AT) {
           useFont(ctx, size * scale);
           ctx.textAlign = "left";
           ctx.transform(squeeze, 0, 0, 1, 0, 0);
           for (const l of lines) ctx.fillText(l.text, l.start * scale, (l.baseline - 0.5) * scale);
-        } else if (fit.short * scale >= MIN_TEXT_PX) {
+        } else if (scale >= NAMES_AT) {
           // Just the last name, bigger, until the whole engraving fits.
-          useFont(ctx, fit.short * scale);
+          const { size: s2, squeeze: k } = fit.short;
+          useFont(ctx, s2 * scale);
           ctx.textAlign = "center";
-          ctx.fillText(fit.shortText, 0, (CAP_EM * fit.short * scale) / 2);
+          ctx.transform(k, 0, 0, 1, 0, 0);
+          ctx.fillText(fit.shortText, 0, (CAP_EM * s2 * scale) / 2);
         } else {
           ctx.globalAlpha = 0.3 * detail;
           const cap = LETTER * scale,
@@ -1221,7 +1260,7 @@ const MapView = (() => {
         key,
         lines,
         full: engrave(lines, b.squeeze),
-        short: Math.min(0.5, 1.8 / textWidth(shortText)),
+        short: lastName(shortText),
         shortText,
       };
       return b._fit;
@@ -1425,8 +1464,20 @@ const MapView = (() => {
       if (e.deltaMode === 1) dy *= 16;
       else if (e.deltaMode === 2) dy *= this.size.h;
       const factor = Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0025));
-      const [x, y] = this.pos(e);
-      this.zoomAt(x, y, factor);
+      const [x, y] = this.pos(e),
+        from = this.wheelRaw || { ...this.view },
+        anchor = this.screenToWorld(x, y, from),
+        fitScale = this.fitScale(),
+        v = { ...from, scale: clamp(from.scale * factor, fitScale * 0.3, MAX_SCALE * 3) };
+      this.wheelRaw = this.placeWorldAt(v, anchor, [x, y]);
+      Object.assign(this.view, this.soften(this.wheelRaw));
+      this.isFit = false;
+      this.draw();
+      clearTimeout(this.wheelTimer);
+      this.wheelTimer = setTimeout(() => {
+        this.wheelRaw = null;
+        this.settle();
+      }, 180);
       this.cb.onUserMove?.();
     }
 

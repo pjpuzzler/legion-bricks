@@ -29,7 +29,8 @@ const Editor = (() => {
   const selected = () => (S.selectedId == null ? null : byId(S.selectedId));
   const copy = (b) => ({ ...Model.toRecord(b), id: b.id, first: b.first, last: b.last, lines: [...b.lines] });
   const fromCopy = (r) => Model.fromRecord(r, r.id);
-  const textKey = (b) => JSON.stringify([b.first, b.last, b.lines, b.split, b.flip, b.squeeze, b.color, b.emblem]);
+  const textKey = (b) =>
+    JSON.stringify([b.first, b.last, b.before, b.after, b.lines, b.split, b.flip, b.squeeze, b.color, b.emblem]);
   const tidy = (s) => s.replace(/[^\S ]/g, " ").trim(); // (a gap of several spaces is kept)
   // Bricks are engraved in capitals, but a typed "Mc" (as in McCOOL) is kept.
   const engraved = (s) =>
@@ -488,6 +489,8 @@ const Editor = (() => {
     const f = {
       first: input("first", b.first, { placeholder: "ROBERT H" }),
       last: input("last", b.last, { placeholder: "BARNES" }),
+      before: input("before", b.before, { placeholder: "CHPLN" }),
+      after: input("after", b.after, { placeholder: "KIA" }),
       lines: [0, 1, 2].map((i) =>
         input(`line${i}`, b.lines[i] || "", { placeholder: ["U S ARMY", "WORLD WAR II", ""][i] }),
       ),
@@ -527,21 +530,23 @@ const Editor = (() => {
       );
     f.first.addEventListener("input", onText("first"));
     f.last.addEventListener("input", onText("last"));
+    f.before.addEventListener("input", onText("before"));
+    f.after.addEventListener("input", onText("after"));
     f.lines.forEach((i) => i.addEventListener("input", onText("lines")));
     f.emblem.addEventListener("change", () => change(() => (byId(id).emblem = f.emblem.value)));
     f.color.addEventListener("change", () => change(() => (byId(id).color = f.color.value)));
     f.split.addEventListener("change", () => change(() => (byId(id).split = f.split.value === "split")));
     f.flip.addEventListener("change", () => change(() => (byId(id).flip = f.flip.value === "flip")));
-    for (const el of [f.first, f.last, ...f.lines])
+    for (const el of [f.first, f.last, f.before, f.after, ...f.lines])
       el.addEventListener("keydown", (e) => {
         if (e.key !== "Enter") return;
         e.preventDefault();
-        const order = [f.first, f.last, ...f.lines],
+        const order = [f.first, f.last, f.before, f.after, ...f.lines],
           next = order[order.indexOf(el) + 1];
         if (next) next.focus();
         else el.blur();
       });
-    for (const el of [f.first, f.last, ...f.lines])
+    for (const el of [f.first, f.last, f.before, f.after, ...f.lines])
       el.addEventListener("blur", () => {
         typing = null;
         el.value = engraved(el.value);
@@ -558,6 +563,7 @@ const Editor = (() => {
       ),
       h("div", { class: "form-preview" }),
       h("div", { class: "field-row" }, field("First name(s)", f.first), field("Last name", f.last)),
+      h("div", { class: "field-row" }, field("Before the name", f.before), field("After the name", f.after)),
       h("div", { class: "field-row" }, field("Name", f.split), field("Laid", f.flip)),
       field("Line 2", f.lines[0]),
       field("Line 3", f.lines[1]),
@@ -581,6 +587,8 @@ const Editor = (() => {
       active = document.activeElement;
     if (active !== f.first) f.first.value = b.first;
     if (active !== f.last) f.last.value = b.last;
+    if (active !== f.before) f.before.value = b.before;
+    if (active !== f.after) f.after.value = b.after;
     if (!f.lines.includes(active)) f.lines.forEach((i, n) => (i.value = b.lines[n] || ""));
 
     const detected = Model.emblemsFor({ ...b, emblem: "" }).map((k) => Model.EMBLEMS[k].name);
