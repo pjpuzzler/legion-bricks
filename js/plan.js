@@ -416,7 +416,7 @@ const Plan = (() => {
   // how far the map can be moved: the walls, the walkway and the flags over
   // them, centred on the plaza. The flags fly to the right, so it reaches
   // just past the flag at 30°. The poles at the two ends are a drag away.
-  const reach = R.curbOut * Math.cos(Math.PI / 6) + 10.7, // a flag is 9.2 wide
+  const reach = R.curbOut * Math.cos(Math.PI / 6) + 9, // a flag is 7.5 wide
     frame = {
       left: SHAPE.axis - reach,
       right: SHAPE.axis + reach,

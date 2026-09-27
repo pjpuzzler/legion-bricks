@@ -77,11 +77,11 @@ const MapView = (() => {
   // Flags are part of the drawing: sized in brick units, so they scale with
   // everything else at every zoom and look the same on every screen. (They only
   // ever reach over the path and lawn, never the bricks.)
-  const FLAG = 5.5; // flag height, in brick units
+  const FLAG = 4.5; // flag height, in brick units
   // The poles, in heights of their flags (Plan.frame's top reaches the tall
   // one's ball).
-  const MAIN_POLE = 3.4,
-    SIDE_POLE = 2.4;
+  const MAIN_POLE = 4.2,
+    SIDE_POLE = 3.2;
 
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   const JOINT = (px) => clamp(1.4 * px, 0.06, 0.16); // grout line width, in brick units
@@ -1835,7 +1835,7 @@ const MapView = (() => {
         const [x, y] = this.worldToScreen(f.x, f.y),
           height = f.main ? fh * 1.2 : fh,
           poleTop = y - height * (f.main ? MAIN_POLE : SIDE_POLE),
-          top = f.main && sky.halfStaff ? poleTop + height * 1.1 : poleTop,
+          top = f.main && sky.halfStaff ? poleTop + height * 1.6 : poleTop,
           fw = height * FLAG_RATIO * span,
           redraw = () => this.draw();
         // A satin aluminum pole: a darker edge with a bright line down it.
