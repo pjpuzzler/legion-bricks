@@ -10,7 +10,7 @@
 const Sky = (() => {
   // The plaza, its time zone, and which way the map's top faces: 330°,
   // north-northwest (from the parking lot to the tall flagpole).
-  const LAT = 40.8361,
+  const LAT = 40.8357,
     LON = -77.6699,
     ZONE = "America/New_York",
     MAP_UP = 330;
@@ -143,11 +143,16 @@ const Sky = (() => {
   const TEST = {
     snow: { snow: true, wind: 8, windFrom: 300, cloud: 60 },
     clear: { snow: false, wind: 12, windFrom: 250, cloud: 0 },
+    cloudy: { snow: false, wind: 12, windFrom: 250, cloud: 100 },
     calm: { snow: false, wind: 1, windFrom: 0, cloud: 10 },
     windy: { snow: false, wind: 35, windFrom: 90, cloud: 30 },
   };
   function fetchWeather() {
-    const test = local && TEST[params.get("weather")];
+    // Locally, ?weather= picks one of the above, and ?wind=250,20 sets where
+    // it blows from (compass degrees) and how hard (km/h).
+    let test = local && TEST[params.get("weather")];
+    const wind = local && /^(\d+),(\d+)$/.exec(params.get("wind") || "");
+    if (wind) test = { ...(test || TEST.clear), windFrom: +wind[1], wind: +wind[2] };
     if (test) {
       weather = test;
       return Promise.resolve(weather);

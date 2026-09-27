@@ -221,18 +221,21 @@ const MapView = (() => {
       for (let i = 0; i < n; i++) {
         const t0 = i / n,
           t1 = (i + 1) / n,
-          dy = wave((t0 + t1) / 2),
           shade = 0.13 * Math.cos(((t0 + t1) / 2) * 5.5 + 0.6);
-        ctx.drawImage(sheet.img, sx + t0 * sw, sy, sw / n, sheet.h, t0 * w, dy, w / n + 0.6, h);
+        const y0 = wave(t0),
+          slope = (wave(t1) - y0) / (w / n);
+        ctx.save();
+        ctx.transform(1, slope, 0, 1, t0 * w, y0);
+        ctx.drawImage(sheet.img, sx + t0 * sw, sy, sw / n, sheet.h, 0, 0, w / n + 0.6, h);
         ctx.fillStyle = shade > 0 ? `rgba(255,255,255,${shade})` : `rgba(0,0,0,${-shade})`;
-        ctx.fillRect(t0 * w, dy, w / n + 0.6, h);
+        ctx.fillRect(0, 0, w / n + 0.6, h);
+        ctx.restore();
       }
     } else drawPlainFlag(ctx, kind, 0, 0, w, h);
     ctx.beginPath();
     ctx.moveTo(0, wave(0));
-    for (let i = 1; i <= n; i++) ctx.lineTo((i / n) * w, wave((i - 0.5) / n));
-    ctx.lineTo(w, wave(1 - 0.5 / n) + h);
-    for (let i = n - 1; i >= 0; i--) ctx.lineTo((i / n) * w, wave((i + 0.5) / n) + h);
+    for (let i = 1; i <= n; i++) ctx.lineTo((i / n) * w, wave(i / n));
+    for (let i = n; i >= 0; i--) ctx.lineTo((i / n) * w, wave(i / n) + h);
     ctx.closePath();
     ctx.strokeStyle = "rgba(0,0,0,.35)";
     ctx.lineWidth = Math.max(0.75, h * 0.03);
@@ -378,7 +381,8 @@ const MapView = (() => {
       R = Plan.R,
       { axis, arcY, straightWall: sw, entrance: en, monument: m } = S,
       w = Plan.walkway;
-    const out = {};
+    // Everything that stands up, as plain outlines with heights, for shadows.
+    const out = { raised: [] };
 
     // Brick field (clip region): the D, the entrance and the walkway.
     const field = new Path2D();
@@ -447,8 +451,28 @@ const MapView = (() => {
     polygon(out.wallTop, Plan.arcBand(OFF.wall + 0.9, OFF.gravel - 0.9, wallBack - 0.9));
     for (const [x0, x1] of straight) {
       out.wall.rect(x0, wallFace, x1 - x0, wallBack - wallFace);
+      out.raised.push({ h: HEIGHT.wall, pts: rectPts(x0, wallFace, x1, wallBack) });
       out.wallTop.rect(x0, wallFace + 0.9, x1 - x0, wallBack - wallFace - 1.8);
     }
+
+    const band0 = Plan.edgeAt(90, false) + Plan.OFF.wall,
+      band1 = Plan.edgeAt(90, false) + Plan.OFF.gravel,
+      a0 = (Math.asin((arcY - wallBack) / band1) * 180) / Math.PI;
+    for (let d = a0; d < 180 - a0; d += 3) {
+      const e = Math.min(180 - a0, d + 3),
+        pt = (deg, r) => [axis + r * Math.cos((deg * Math.PI) / 180), arcY - r * Math.sin((deg * Math.PI) / 180)];
+      out.raised.push({ h: HEIGHT.wall, pts: [pt(d, band0), pt(d, band1), pt(e, band1), pt(e, band0)] });
+    }
+    for (const p of Plan.pillars) {
+      const c = Math.cos(p.angle),
+        s = Math.sin(p.angle),
+        h = p.size / 2;
+      out.raised.push({
+        h: HEIGHT.pillar,
+        pts: [[-h, -h], [h, -h], [h, h], [-h, h]].map(([x, y]) => [p.x + x * c - y * s, p.y + x * s + y * c]),
+      });
+    }
+    out.raised.push({ h: HEIGHT.monument, pts: rectPts(m.left + 1, m.top + 1, m.right - 1, m.bottom - 1) });
 
     out.pillars = new Path2D();
     out.pillarCaps = new Path2D();
@@ -552,11 +576,13 @@ const MapView = (() => {
           x = dir < 0 ? near - length : near;
         scatter(dir < 0 ? x - gap : x + length, hedgeTop, gap, depth); // between two shrubs
         roundedRect(out.hedges, x, hedgeTop, length, depth, 3.2);
+        out.raised.push({ h: HEIGHT.hedge, pts: rectPts(x + 0.9, hedgeTop, x + length - 0.9, hedgeBottom) });
         roundedRect(out.hedgeTops, x + 1.4, hedgeTop + 1.4, length - 2.8, depth - 2.8, 2.4);
       }
       // The bench runs alongside the first shrub, as long as the shrubs are deep.
       const middle = edge + (dir * S.benchGap) / 2;
       out.benches.rect(middle - 2, hedgeTop + 0.5, 4, depth - 1);
+      out.raised.push({ h: HEIGHT.bench, pts: rectPts(middle - 2, hedgeTop + 0.5, middle + 2, hedgeTop + depth - 0.5) });
     }
 
     // The plaza itself, walls and walkway included: it stays lit at night.
@@ -606,33 +632,51 @@ const MapView = (() => {
   // Heights (brick units: 1 is 4 inches) of the things that cast shadows.
   const HEIGHT = { wall: 7.5, pillar: 11, monument: 13, hedge: 9, bench: 5, pole: 54, mainPole: 84 };
 
-  // Soft shadows for the sun where it is: each raised shape swept a little
-  // way from the sun, never longer than the thing is tall, so they stay quiet
-  // even when the sun is low. The flagpoles throw thin lines (at most two
-  // thirds their height), with a little patch where each flag is. Built again
-  // as the sun moves.
+  const rectPts = (x0, y0, x1, y1) => [
+    [x0, y0],
+    [x1, y0],
+    [x1, y1],
+    [x0, y1],
+  ];
+
+  // The smallest convex outline round some points.
+  function hull(pts) {
+    const p = [...pts].sort((a, b) => a[0] - b[0] || a[1] - b[1]),
+      cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]),
+      lower = [],
+      upper = [];
+    for (const q of p) {
+      while (lower.length >= 2 && cross(lower.at(-2), lower.at(-1), q) <= 0) lower.pop();
+      lower.push(q);
+    }
+    for (const q of p.reverse()) {
+      while (upper.length >= 2 && cross(upper.at(-2), upper.at(-1), q) <= 0) upper.pop();
+      upper.push(q);
+    }
+    return [...lower.slice(0, -1), ...upper.slice(0, -1)];
+  }
+
+  // Shadows for the sun where it is, as an aerial photo shows them: each
+  // raised outline swept away from the sun (at most 1.2 times its height, so
+  // a low sun doesn't throw them across the map), and each flagpole a thin
+  // line (at most three quarters of its height) with a patch where its flag
+  // flies. Built again as the sun moves.
   function buildShadows(S, sky) {
     const { altitude } = sky.sun;
-    if (sky.shadow <= 0.02 || altitude < 2 || typeof Path2D.prototype.addPath !== "function") return null;
+    if (sky.shadow <= 0.02 || altitude < 2) return null;
     const a = (sky.sunOnMap * Math.PI) / 180,
       cot = 1 / Math.tan((altitude * Math.PI) / 180),
       dir = [-Math.sin(a), Math.cos(a)],
-      v = dir.map((c) => c * Math.min(1, cot)), // shadow per unit of height
-      vp = dir.map((c) => c * Math.min(0.66, cot)), // the same for the poles
+      v = dir.map((c) => c * Math.min(1.2, cot)), // shadow per unit of height
+      vp = dir.map((c) => c * Math.min(0.75, cot)), // the same for the poles
       fill = new Path2D(),
       flags = new Path2D(),
       lines = new Path2D();
-    const sweep = (path, h) => {
-      const n = Math.min(12, Math.max(1, Math.ceil((Math.hypot(...v) * h) / 1.5)));
-      for (let i = 0; i <= n; i++) fill.addPath(path, new DOMMatrix([1, 0, 0, 1, (v[0] * h * i) / n, (v[1] * h * i) / n]));
-    };
-    sweep(S.wall, HEIGHT.wall);
-    sweep(S.pillars, HEIGHT.pillar);
-    sweep(S.monumentStone, HEIGHT.monument);
-    sweep(S.hedges, HEIGHT.hedge);
-    sweep(S.benches, HEIGHT.bench);
+    for (const { h, pts } of S.raised)
+      polygon(fill, hull([...pts, ...pts.map(([x, y]) => [x + v[0] * h, y + v[1] * h])]));
     const wind = [Math.sin((sky.windTo * Math.PI) / 180), -Math.cos((sky.windTo * Math.PI) / 180)],
-      fw = FLAG * FLAG_RATIO;
+      fh = FLAG * 0.9,
+      fw = fh * FLAG_RATIO;
     for (const f of Plan.flagpoles) {
       const h = f.main ? HEIGHT.mainPole : HEIGHT.pole,
         top = f.main && sky.halfStaff ? h * 0.6 : h,
@@ -640,8 +684,8 @@ const MapView = (() => {
       lines.moveTo(f.x, f.y);
       lines.lineTo(...at(h, 0));
       const flag = (z0, z1, len) => polygon(flags, [at(z1, 0), at(z1, len), at(z0, len), at(z0, 0)]);
-      flag(top - FLAG * 1.4, top, fw * 1.4);
-      if (f.main) flag(top - FLAG * 2.7, top - FLAG * 1.5, fw * 1.2);
+      flag(top - fh, top, fw);
+      if (f.main) flag(top - 2 * fh - 0.8, top - fh - 0.8, fw * 0.85);
     }
     return { fill, flags, lines };
   }
@@ -749,12 +793,12 @@ const MapView = (() => {
           const x = W * (0.15 + 0.7 * Math.random()),
             y = H * (0.1 + 0.3 * Math.random()),
             color = colors[Math.floor(Math.random() * colors.length)];
-          for (let i = 0; i < 34; i++) {
-            const a = (i / 34) * 2 * Math.PI,
-              v = 55 + Math.random() * 70;
+          for (let i = 0; i < 56; i++) {
+            const a = (i / 56) * 2 * Math.PI + Math.random() * 0.1,
+              v = 70 + Math.random() * 80;
             sparks.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 1, color });
           }
-          next = t + 900 + Math.random() * 1400;
+          next = t + 700 + Math.random() * 1100;
         }
         for (let i = sparks.length - 1; i >= 0; i--) {
           const p = sparks[i];
@@ -766,9 +810,13 @@ const MapView = (() => {
             sparks.splice(i, 1);
             continue;
           }
-          g.globalAlpha = p.life;
-          g.fillStyle = p.color;
-          g.fillRect(p.x - 1, p.y - 1, 2.2, 2.2);
+          g.globalAlpha = Math.min(1, p.life * 1.3);
+          g.strokeStyle = p.color;
+          g.lineWidth = 2;
+          g.beginPath();
+          g.moveTo(p.x - p.vx * 0.06, p.y - p.vy * 0.06);
+          g.lineTo(p.x, p.y);
+          g.stroke();
         }
         g.globalAlpha = 1;
         if (t > stopAt && !sparks.length) {
@@ -1290,13 +1338,13 @@ const MapView = (() => {
       // Shadows, while the sun's up, under everything that stands up.
       if (this.shadows === undefined) this.shadows = buildShadows(S, sky);
       if (this.shadows) {
-        const a = 0.15 * sky.shadow;
-        ctx.fillStyle = `rgba(24, 28, 40, ${a})`;
+        const a = 0.3 * sky.shadow;
+        ctx.fillStyle = `rgba(20, 24, 34, ${a})`;
         ctx.fill(this.shadows.fill);
-        ctx.fillStyle = `rgba(24, 28, 40, ${a * 0.7})`;
+        ctx.fillStyle = `rgba(20, 24, 34, ${a * 0.65})`;
         ctx.fill(this.shadows.flags);
-        ctx.strokeStyle = `rgba(24, 28, 40, ${a})`;
-        ctx.lineWidth = 0.35;
+        ctx.strokeStyle = `rgba(20, 24, 34, ${a})`;
+        ctx.lineWidth = 0.55;
         ctx.stroke(this.shadows.lines);
       }
 
@@ -1346,7 +1394,7 @@ const MapView = (() => {
       ctx.stroke(S.monumentStone);
       if (sky.monumentWreath) {
         const m = Plan.SHAPE.monument;
-        this.drawWreath((m.left + m.right) / 2, m.bottom + 1.7, 1.45);
+        this.drawWreath((m.left + m.right) / 2, m.bottom - 2.3, 0.85);
       }
 
       this.drawLight(vis);
@@ -1566,13 +1614,15 @@ const MapView = (() => {
       const fh = FLAG * scale, // in screen px
         sky = this.sky,
         across = Math.sin(((sky.windTo * Math.PI) / 180) + this.view.angle),
-        look = { dir: across < -0.1 ? -1 : 1, breeze: sky.breeze };
+        look = { dir: across < -0.1 ? -1 : 1, breeze: sky.breeze },
+        // Blowing up or down the screen, the flags are seen more edge-on.
+        span = 0.45 + 0.55 * Math.abs(across);
       for (const f of Plan.flagpoles) {
         const [x, y] = this.worldToScreen(f.x, f.y),
           height = f.main ? fh * 1.2 : fh,
           poleTop = y - height * (f.main ? 2.5 : 2.1),
           top = f.main && sky.halfStaff ? poleTop + (y - poleTop) * 0.3 : poleTop,
-          fw = height * FLAG_RATIO,
+          fw = height * FLAG_RATIO * span,
           redraw = () => this.draw();
         // A satin aluminum pole: a darker edge with a bright line down it.
         const pw = Math.max(1.4, 0.26 * scale);
